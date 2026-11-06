@@ -1,0 +1,1225 @@
+
+===== MonitorView =====
+function MonitorView({ onNavigate, onUpload }: {
+  onNavigate: (page: Section) => void;
+  onUpload: () => void;
+}) {
+  const tabs = [
+    "System Health", "Document Processing",
+    "Data Services", "Processing Workflow"
+  ];
+
+  const [tab, setTab] = useState("Overview");
+  const [selectedStage, setSelectedStage] = useState("upload");
+  const [health, setHealth] = useState<any>(null);
+  const [gpu, setGpu] = useState<any>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  async function refresh() {
+    setLoading(true);
+    setError("");
+    try {
+      const [h, g] = await Promise.all([
+        fetch(`${API_URL}/api/health`),
+        fetch(`${API_URL}/api/gpu-status`)
+      ]);
+
+      if (!h.ok) throw new Error("Backend health endpoint unavailable.");
+      const healthData = await h.json();
+      const gpuData = g.ok ? await g.json() : null;
+
+      setHealth(healthData);
+      setGpu(gpuData);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Monitoring refresh failed.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => { refresh(); }, []);
+
+  const online = health?.api === "ok" && health?.database === "connected";
+  const card = {
+    background: "#FFFFFF",
+    border: "1px solid #E2E8F0",
+    borderRadius: 13,
+    padding: 19,
+    boxShadow: "0 4px 14px rgba(15,23,42,.04)",
+  } as React.CSSProperties;
+
+  const status = (ok: boolean) => (
+    <span style={{
+      display: "inline-flex",
+      alignItems: "center",
+      gap: 6,
+      fontSize: 11,
+      fontWeight: 700,
+      padding: "5px 9px",
+      borderRadius: 20,
+      color: ok ? "#15803D" : "#B45309",
+      background: ok ? "#DCFCE7" : "#FEF3C7"
+    }}>
+      <span style={{
+        display: "inline-block",
+        width: 7,
+        height: 7,
+        borderRadius: "50%",
+        background: ok ? "#16A34A" : "#D97706"
+      }} />
+      {ok ? "Online" : "Check status"}
+    </span>
+  );
+
+  return (
+    <div style={{display:"grid",gap:20}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:12,flexWrap:"wrap"}}>
+        <div>
+          <div style={{fontSize:11,fontWeight:800,letterSpacing:1.5,color:"#64748B"}}>SYSTEM MONITOR / DEMO</div>
+          <h1 style={{fontSize:30,margin:"7px 0"}}>Platform Health</h1>
+          <p style={{color:"#64748B",margin:0,fontSize:13}}>
+            Monitor ContractIQ AI services and document processing infrastructure.
+          </p>
+        </div>
+        <div style={{display:"flex",alignItems:"center",gap:12}}>
+          {status(online)}
+          <button className="button button-outline" onClick={refresh} disabled={loading}>
+            ? {loading ? "Refreshing..." : "Refresh"}
+          </button>
+        </div>
+      </div>
+
+      <div style={{display:"flex",gap:5,borderBottom:"1px solid #E2E8F0",overflowX:"auto"}}>
+        {tabs.map(item => (
+          <button key={item} onClick={() => setTab(item)} style={{
+            padding:"12px 15px",border:0,whiteSpace:"nowrap",
+            cursor:"pointer",fontSize:12,fontWeight:700,
+            color:tab===item?"#137C70":"#64748B",
+            background:tab===item?"#E8F5F2":"transparent",
+            borderBottom:tab===item?"3px solid #159989":"3px solid transparent",
+          }}>{item}</button>
+        ))}
+      </div>
+
+      {error && <div role="alert" style={{...card,color:"#B42318"}}>{error}</div>}
+
+      {tab === "Overview" && (
+        <>
+
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(155px,1fr))",gap:12}}>
+            {([
+              ["Backend API", health?.api === "ok" ? "Online" : "Unknown", () => { void refresh(); }],
+              ["Database Connection", health?.database || "Unknown", () => setTab("Data Services")],
+              ["HeronIDP Engine", health?.ollama || "Unknown", () => setTab("Data Services")],
+              ["INDEXED DOCUMENTS", String(health?.indexed_documents ?? "?"), () => setTab("Document Processing")],
+              ["Contract Understanding Model", health?.chat_model_installed ? "Available" : "Check", () => setTab("Data Services")],
+              ["Embedding Service", health?.embedding_model_installed ? "Available" : "Check", () => setTab("Data Services")],
+            ] as Array<[string, string, () => void]>).map(([label,value,action]) => (
+              <button
+                key={label}
+                type="button"
+                onClick={action}
+                aria-label={`${label}: ${value}. Open related monitoring details.`}
+                className="monitor-stat-card"
+                style={{
+                  ...card,
+                  minHeight:91,
+                  width:"100%",
+                  textAlign:"left",
+                  cursor:"pointer",
+                  fontFamily:"inherit",
+                  color:"#1E293B",
+                  transition:"transform 150ms ease, box-shadow 150ms ease, border-color 150ms ease",
+                }}
+              >
+                <div style={{fontSize:10,fontWeight:800,color:"#64748B",letterSpacing:1}}>{label}</div>
+                <div style={{fontSize:21,fontWeight:800,marginTop:13}}>{value}</div>
+                <div style={{fontSize:10,color:"#64748B",marginTop:7}}>Click to view details ?</div>
+              </button>
+            ))}
+          </div>
+
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(260px,1fr))",gap:14}}>
+            <div style={card}>
+              <div style={{fontSize:10,fontWeight:800,color:"#64748B"}}>Database Infrastructure</div>
+              <h3 style={{fontFamily:"Georgia,serif",fontSize:22,margin:"8px 0 15px"}}>PostgreSQL + pgvector</h3>
+              {status(health?.database === "connected")}
+              <p style={{fontSize:12,color:"#64748B",marginTop:14}}>Contract records, terms, reviews and vector embeddings.</p>
+            </div>
+            <div style={card}>
+              <div style={{fontSize:10,fontWeight:800,color:"#64748B"}}>Heron Model Server</div>
+              <h3 style={{fontFamily:"Georgia,serif",fontSize:22,margin:"8px 0 15px"}}>Ollama</h3>
+              {status(health?.ollama === "connected")}
+              <p style={{fontSize:12,color:"#64748B",marginTop:14}}>Chat: {health?.chat_model || "Not reported"}</p>
+              <p style={{fontSize:12,color:"#64748B"}}>Embeddings: {health?.embedding_model || "Not reported"}</p>
+              <p style={{fontSize:12,color:"#64748B"}}>Heron Model Ready: {gpu?.model_loaded == null ? "Not reported" : gpu.model_loaded ? "Yes" : "Idle"}</p>
+            </div>
+          </div>
+        </>
+      )}
+
+
+
+      {tab === "Ingestion" && (
+        <div style={{display:"grid",gap:16}}>
+          <section style={card}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:12,flexWrap:"wrap"}}>
+              <div>
+                <h2 style={{fontFamily:"Georgia,serif",margin:"0 0 7px"}}>Document Intake & Processing</h2>
+                <p style={{fontSize:13,color:"#64748B",margin:0}}>Explore </p>
+              </div>
+              <button className="button button-primary" onClick={onUpload}>
+                Document Upload
+              </button>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => onNavigate("Contracts")}
+              style={{
+                marginTop:20,padding:15,width:"100%",textAlign:"left",
+                border:"1px solid #DCE5EF",borderRadius:12,
+                background:"#F8FAFC",cursor:"pointer",color:"#1E293B"
+              }}
+            >
+              <div style={{fontSize:10,fontWeight:800,letterSpacing:1,color:"#64748B"}}>INDEXED DOCUMENTS</div>
+              <div style={{fontSize:32,fontWeight:800,margin:"5px 0"}}>{health?.indexed_documents ?? "?"}</div>
+              <div style={{fontSize:12,color:"#64748B"}}>View all indexed documents</div>
+            </button>
+          </section>
+
+          <section style={card}>
+            <h3 style={{fontFamily:"Georgia,serif",fontSize:21,margin:"0 0 7px"}}>Document Processing Pipeline</h3>
+            <p style={{fontSize:12,color:"#64748B",margin:"0 0 16px"}}>Select any stage to see how Heron IDP processes your documents.</p>
+
+            <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(145px,1fr))",gap:10}}>
+              {([
+                ["upload","01","Upload document","Add PDF contracts"],
+                ["extract","02","Text Extraction","Read text and pages"],
+                ["chunks","03","	Organising Contract Content","Prepare searchable text"],
+                ["embed","04","Understanding Contract Language","Generate semantic vectors"],
+                ["storage","05","Making Contract Information Searchable","Store records and vectors"],
+                ["review","06","Reviewing Contract Terms","Extract terms and clauses"],
+              ]).map(([id,number,title,subtitle]) => (
+                <button
+                  key={id}
+                  type="button"
+                  aria-pressed={selectedStage === id}
+                  onClick={() => {
+                    setSelectedStage(id);
+                    if (id === "upload") onUpload();
+                    if (id === "storage") setTab("Ollama & Database");
+                    if (id === "review") onNavigate("Contract Terms Index");
+                  }}
+                  style={{
+                    padding:14,
+                    minHeight:105,
+                    textAlign:"left",
+                    borderRadius:11,
+                    border:selectedStage === id ? "2px solid #159989" : "1px solid #DCE5EF",
+                    background:selectedStage === id ? "#EAF7F4" : "#FFFFFF",
+                    color:"#1E293B",
+                    cursor:"pointer",
+                    transition:"all 150ms ease"
+                  }}
+                >
+                  <div style={{fontSize:11,fontWeight:800,color:"#149889",marginBottom:9}}>STEP {number}</div>
+                  <b style={{display:"block",fontSize:13}}>{title}</b>
+                  <small style={{display:"block",marginTop:5,color:"#64748B"}}>{subtitle}</small>
+                  <small style={{display:"block",marginTop:9,color:"#148779",fontWeight:700}}>See What Happens</small>
+                </button>
+              ))}
+            </div>
+
+            <div style={{marginTop:17,padding:16,borderRadius:11,background:"#F1F7FA",border:"1px solid #DFEAF0"}}>
+              <b style={{fontSize:14}}>
+                {{
+                  upload:"Upload document",
+                  extract:"PDF text extraction",
+                  chunks:"Text chunking",
+                  embed:"Semantic embeddings",
+                  storage:"PostgreSQL and pgvector indexing",
+                  review:"Extraction and human review"
+                }[selectedStage] || "Ingestion stage"}
+              </b>
+              <p style={{fontSize:13,lineHeight:1.7,color:"#475569",margin:"7px 0 0"}}>
+                {{
+                  upload:"Upload individual PDFs, multiple PDFs or supported ZIP archives. Files are validated before indexing.",
+                  extract:"The backend reads PDF content and extracts text for downstream contract processing.",
+                  chunks:"Extracted text is divided into searchable sections so relevant contract passages can be retrieved.",
+                  embed:"The configured Contract Search Model converts text chunks into vectors for semantic retrieval.",
+                  storage:"Contract records, extracted data and vector representations are stored using PostgreSQL and pgvector.",
+                  review:"HeronIDP proposes contractual terms and clauses. Reviewers can inspect evidence and approve, reject or return extracted items."
+                }[selectedStage] || "Select a pipeline stage to view details."}
+              </p>
+            </div>
+          </section>
+        </div>
+      )}
+
+      {tab === "Ollama & Database" && (
+        <div style={card}>
+          <h2 style={{fontFamily:"Georgia,serif"}}>Service connectivity</h2>
+          {[
+            ["FastAPI",health?.api === "ok"],
+            ["PostgreSQL",health?.database === "connected"],
+            ["Ollama",health?.ollama === "connected"],
+            ["Contract Understanding Model",!!health?.chat_model_installed],
+            ["Contract Search Model installed",!!health?.embedding_model_installed],
+          ].map(([name,ok]) => (
+            <div key={String(name)} style={{display:"flex",justifyContent:"space-between",padding:"13px 0",borderBottom:"1px solid #E2E8F0"}}>
+              <b style={{fontSize:13}}>{String(name)}</b>{status(Boolean(ok))}
+            </div>
+          ))}
+        </div>
+      )}
+
+
+      {tab === "Workflow" && (
+        <div style={card}>
+          <h2 style={{fontFamily:"Georgia,serif"}}>Contract processing workflow</h2>
+          {["Document upload","PDF validation and text extraction","	Organising Contract Content","Understanding Contract Language","PostgreSQL + pgvector indexing","AI term and clause extraction","Human review and approval"].map((step,i) => (
+            <div key={step} style={{display:"flex",alignItems:"center",gap:13,padding:"12px 0",borderBottom:"1px solid #E2E8F0"}}>
+              <span style={{width:27,height:27,borderRadius:30,background:"#E8F5F2",color:"#137C70",display:"grid",placeItems:"center",fontWeight:800,fontSize:12}}>{i+1}</span>
+              <b style={{fontSize:13}}>{step}</b>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div style={{fontSize:11,color:"#64748B"}}>
+        Live service status comes from the backend health endpoints. Job history and worker telemetry are not instrumented in this demo.
+      </div>
+    </div>
+  );
+}
+
+
+===== AnalysisView =====
+function AnalysisView({
+  onUpload, documents, selectedDocumentId, setSelectedDocumentId, setActive,
+}: {
+  onUpload: () => void;
+  documents: IndexedDocument[];
+  selectedDocumentId: string;
+  setSelectedDocumentId: (id: string) => void;
+  setActive: (section: Section) => void;
+}) {
+  const [analysis, setAnalysis] = useState<ContractAnalysisResult | null>(null);
+  const [analysisId, setAnalysisId] = useState<number | null>(null);
+  const [loadingSaved, setLoadingSaved] = useState(false);
+  const [running, setRunning] = useState(false);
+  const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+
+  const selected = documents.find(d => d.document_id === selectedDocumentId);
+  console.log("Analysis selectedDocumentId:", selectedDocumentId);
+  console.log("Analysis selected document:", selected);
+
+  const show = (v: unknown) => v === null || v === undefined || v === "" ? "Not specified" : String(v);
+
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      setAnalysis(null);
+      setAnalysisId(null);
+      setError("");
+      setNotice("");
+      if (!selectedDocumentId) return;
+      setLoadingSaved(true);
+      try {
+        const response = await fetch(`${API_URL}/api/documents/${selectedDocumentId}/analysis`);
+        const data = await response.json();
+        if (response.status === 404) {
+          if (!cancelled) setNotice("No saved analysis yet. Select Analyse Contract to run it.");
+          return;
+        }
+        if (!response.ok) throw new Error(data.detail || "Could not load saved analysis.");
+        if (!cancelled) {
+          setAnalysis(data.analysis || null);
+          setAnalysisId(data.analysis_id ?? null);
+        }
+      } catch (e) {
+        if (!cancelled) setError(e instanceof Error ? e.message : "Could not load saved analysis.");
+      } finally {
+        if (!cancelled) setLoadingSaved(false);
+      }
+    };
+    load();
+    return () => { cancelled = true; };
+  }, [selectedDocumentId]);
+
+  const runAnalysis = async () => {
+    if (!selectedDocumentId || running) return;
+    setRunning(true);
+    setError("");
+    setNotice("");
+    setAnalysis(null);
+    setAnalysisId(null);
+    try {
+      const response = await fetch(`${API_URL}/api/documents/${selectedDocumentId}/analyse`, {
+        method: "POST",
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.detail || "Contract analysis failed.");
+      setAnalysis(data.analysis || null);
+      setAnalysisId(data.analysis_id ?? null);
+      setNotice("Analysis completed and saved in PostgreSQL.");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not analyse this contract.");
+    } finally {
+      setRunning(false);
+    }
+  };
+
+  const Section = ({title, subtitle, children}: {title: string; subtitle: string; children: React.ReactNode}) => (
+    <section className="panel" style={{padding: 22, marginBottom: 18}}>
+      <div className="panel-heading"><div><h3>{title}</h3><p>{subtitle}</p></div></div>
+      {children}
+    </section>
+  );
+
+  return <>
+    <style jsx global>{`
+  .commercial-metrics-grid .metric-card .metric-top > span {
+    font-size: 15px !important;
+    line-height: 1.5 !important;
+  }
+  .commercial-metrics-grid .metric-card .metric-value {
+    font-size: 30px !important;
+  }
+  .commercial-metrics-grid .metric-card .metric-note {
+    font-size: 13px !important;
+    line-height: 1.5 !important;
+  }
+`}</style>
+<PageHeading eyebrow="WORKSPACE / HERONIDP ANALYSIS" title="HERONIDP contract analysis"
+      description="Extract structured terms, clauses and obligations from your locally stored agreements."
+      action={<button className="button button-primary" onClick={onUpload}><Upload size={15}/> Upload document</button>} />
+
+    <section className="panel" style={{padding: 22, marginBottom: 20}}>
+      <label htmlFor="analysis-contract-select" style={{display:"block",fontSize:11,fontWeight:700,letterSpacing:1,marginBottom:9}}>SELECT AN INDEXED CONTRACT</label>
+      <div style={{display:"flex",gap:14,alignItems:"end",flexWrap:"wrap"}}>
+        <div style={{flex:"1 1 280px"}}>
+          <select id="analysis-contract-select" value={selectedDocumentId}
+            onChange={e=>setSelectedDocumentId(e.target.value)}
+            disabled={!documents.length || running}
+            style={{width:"100%",maxWidth:520,padding:"12px 14px",border:"1px solid #E2E6EE",borderRadius:9,background:"#fff"}}>
+            <option value="">Select a contract</option>
+            {documents.map(doc=><option key={doc.document_id} value={doc.document_id}>{doc.filename}</option>)}
+          </select>
+          {selected && <p style={{margin:"8px 0 0",color:"#7C8799",fontSize:12}}>{selected.pages_indexed} pages · {selected.chunks_created} chunks · {selected.status}</p>}
+        </div>
+        <button className="button button-primary" onClick={runAnalysis}
+          disabled={!selectedDocumentId || running || loadingSaved}>
+          <Sparkles size={15}/>{running ? "Analysing contract…" : "Analyse Contract"}
+        </button>
+      </div>
+      {!documents.length && <p style={{color:"#7C8799",fontSize:13}}>No indexed contracts available. Upload a PDF to get started.</p>}
+      {loadingSaved && <p role="status" style={{fontSize:13,color:"#687386"}}>Checking PostgreSQL for a saved analysis…</p>}
+      {running && <p role="status" style={{fontSize:13,color:"#687386"}}>Heron IDP is viewing the contract...</p>}
+      {notice && <p role="status" style={{fontSize:13,color:"#16845D"}}>{notice}{analysisId ? ` Analysis #${analysisId}.` : ""}</p>}
+      {error && <p role="alert" style={{fontSize:13,color:"#B42318"}}>{error}</p>}
+    </section>
+
+    {analysis && <>
+      <div className="metrics-grid compact-metrics">
+        <button type="button" title="Open Financial and Commercial Terms" onClick={() => setActive("Financial & Commercial Terms")} style={{ width: "100%", border: 0, padding: 0, background: "transparent", textAlign: "left", cursor: "pointer", borderRadius: 12 }}><MetricCard label="Contract value" value={show(analysis.contract_overview?.contract_value)} note={show(analysis.contract_overview?.currency)} icon={Wallet} tone="blue"/></button>
+        <button type="button" title="Review Contract Terms" onClick={() => setActive("Clause & Condition Review")} style={{ width: "100%", border: 0, padding: 0, background: "transparent", textAlign: "left", cursor: "pointer", borderRadius: 12 }}><MetricCard label="Key clauses" value={analysis.key_clauses?.length ?? 0} note="Extracted clauses" icon={FileSearch} tone="violet"/></button>
+        <button type="button" title="Open Contractual Obligations" onClick={() => setActive("Contractual Obligations")} style={{ width: "100%", border: 0, padding: 0, background: "transparent", textAlign: "left", cursor: "pointer", borderRadius: 12 }}><MetricCard label="Obligations" value={analysis.obligations?.length ?? 0} note="Identified commitments" icon={FileCheck2} tone="green"/></button>
+        <button type="button" title="Open Contract Risk Assessment" onClick={() => setActive("Contract Risk Assessment")} style={{ width: "100%", border: 0, padding: 0, background: "transparent", textAlign: "left", cursor: "pointer", borderRadius: 12 }}><MetricCard label="Potential risks" value={analysis.risk_assessment?.length ?? 0} note="For human review" icon={ShieldAlert} tone="amber"/></button>
+      </div>
+
+      <Section title="Contract overview" subtitle={show(analysis.contract_overview?.contract_type)}>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(180px,1fr))",gap:16}}>
+          <div><small>Parties</small><p>{analysis.contract_overview?.parties?.map((p:any)=>`${p.party_name || "Party"} (${p.party_type || "Role"})`).join(", ") || "Not specified"}</p></div>
+          <div><small>Effective date</small><p>{show(analysis.contract_overview?.effective_date)}</p></div>
+          <div><small>Expiry date</small><p>{show(analysis.contract_overview?.expiry_date)}</p></div>
+        </div>
+      </Section>
+
+      <Section title="Financial terms" subtitle="Commercial amounts extracted from the contract">
+        {analysis.financial_terms?.length ? analysis.financial_terms.map((x:any,i:number)=><div key={i} style={{padding:"12px 0",borderTop:"1px solid #EDF0F5"}}>
+          <b>{x.description || "Financial term"} · {show(x.amount)}</b>
+          <p>Payment condition: {show(x.payment_condition)}</p>
+          {x.evidence && <blockquote>{x.evidence}</blockquote>}
+        </div>) : <p>No financial terms were extracted.</p>}
+      </Section>
+
+      <div className="dashboard-grid">
+        <Section title="Key clauses" subtitle="Clause summaries and source evidence">
+          {analysis.key_clauses?.length ? analysis.key_clauses.map((x:any,i:number)=><div key={i} style={{padding:"12px 0",borderTop:"1px solid #EDF0F5"}}>
+            <b>{x.clause_name || "Clause"}</b><p>{x.summary}</p><small>{x.page_number ? `Page ${x.page_number}` : "Page not identified"}</small>
+            {x.evidence && <blockquote>{x.evidence}</blockquote>}
+          </div>) : <p>No clauses were extracted.</p>}
+        </Section>
+        <Section title="Contractual Obligations" subtitle="Responsibilities identified in the agreement">
+          {analysis.obligations?.length ? analysis.obligations.map((x:any,i:number)=><div key={i} style={{padding:"12px 0",borderTop:"1px solid #EDF0F5"}}>
+            <b>{x.responsible_party || "Responsible party"}</b><p>{x.obligation}</p><small>Deadline: {show(x.deadline)}{x.page_number ? ` · Page ${x.page_number}` : ""}</small>
+            {x.evidence && <blockquote>{x.evidence}</blockquote>}
+          </div>) : <p>No obligations were extracted.</p>}
+        </Section>
+      </div>
+
+      <div className="dashboard-grid" style={{marginTop:18}}>
+        <Section title="Risk assessment" subtitle="Potential issues requiring human review">
+          {analysis.risk_assessment?.length ? analysis.risk_assessment.map((x:any,i:number)=><div key={i} style={{padding:"12px 0",borderTop:"1px solid #EDF0F5"}}>
+            <b>{x.risk || "Potential risk"}</b> <span className={`risk-pill ${(x.severity || "medium").toLowerCase()}`}>{x.severity || "Unrated"}</span>
+            <p>{x.explanation}</p>{x.evidence && <blockquote>{x.evidence}</blockquote>}
+          </div>) : <p>No qualifying risks were identified by this analysis. This does not guarantee the contract is risk-free.</p>}
+        </Section>
+        <Section title="Important dates" subtitle="Dates explicitly identified in the contract">
+          {analysis.important_dates?.length ? analysis.important_dates.map((x:any,i:number)=><div key={i} style={{padding:"12px 0",borderTop:"1px solid #EDF0F5"}}>
+            <b>{x.event || "Contract event"}</b><p>{show(x.date)} · Notice period: {show(x.notice_period)}</p>
+          </div>) : <p>No explicit important dates were extracted.</p>}
+        </Section>
+      </div>
+
+      <Section title="Missing information" subtitle="Items not found in the supplied contract text">
+        {analysis.missing_information?.length ? analysis.missing_information.map((x:any,i:number)=><div key={i} style={{padding:"10px 0",borderTop:"1px solid #EDF0F5"}}>
+          <b>{x.description || x.event || "Unspecified information"}</b>{x.explanation && <p>{x.explanation}</p>}
+        </div>) : <p>No missing information was reported.</p>}
+      </Section>
+      <div className="demo-disclaimer"><ShieldAlert size={14}/> Generated extraction is a review aid, not legal advice. Verify findings against the original contract.</div>
+    </>}
+
+    {!analysis && !loadingSaved && !running && selectedDocumentId && !error && (
+      <div className="analysis-intro"><div className="analysis-illustration"><FileSearch size={32}/><Sparkles size={17}/></div>
+        <div><h2>Ready to analyse this contract</h2><p>Run Heron IDP to extract the overview, financial terms, clauses, obligations, potential risks and important dates. Results will be saved in PostgreSQL.</p></div>
+      </div>
+    )}
+  </>;
+}
+
+type ComparisonRule = {
+  id: number;
+  clause_id: number;
+  rule_type: string;
+  category: string | null;
+  title: string;
+  actor: string | null;
+  beneficiary: string | null;
+  modality: string | null;
+  action: string | null;
+  trigger_condition: string | null;
+  deadline_or_duration: string | null;
+  amount_or_formula: string | null;
+  exceptions_or_qualifications: string | null;
+  consequence_or_remedy: string | null;
+  original_text: string;
+  plain_language_explanation: string;
+  page_number: number | null;
+  review_status: string;
+};
+
+
+===== ComparisonView =====
+function ComparisonView({ documents }: { documents: IndexedDocument[] }) {
+  const [leftId, setLeftId] = useState("");
+  const [rightId, setRightId] = useState("");
+  const [leftRules, setLeftRules] = useState<ComparisonRule[]>([]);
+  const [rightRules, setRightRules] = useState<ComparisonRule[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [compared, setCompared] = useState(false);
+  const [error, setError] = useState("");
+  const [filter, setFilter] = useState("all");
+
+  useEffect(() => {
+    if (!leftId && documents.length) setLeftId(documents[0].document_id);
+    if (!rightId && documents.length > 1) setRightId(documents[1].document_id);
+  }, [documents, leftId, rightId]);
+
+  const normalise = (value: string | null | undefined) =>
+    (value || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+
+  const fetchRules = async (id: string): Promise<ComparisonRule[]> => {
+    const response = await fetch(`${API_URL}/api/documents/${id}/rules`);
+    if (!response.ok) throw new Error(`Could not load rules for contract (${response.status})`);
+    const data = await response.json();
+    return Array.isArray(data) ? data : data.rules || [];
+  };
+
+  async function runComparison() {
+    if (!leftId || !rightId || leftId === rightId) {
+      setError("Select two different contracts.");
+      return;
+    }
+
+    setLoading(true);
+    setError("");
+    setCompared(false);
+
+    try {
+      const [a, b] = await Promise.all([fetchRules(leftId), fetchRules(rightId)]);
+      setLeftRules(a);
+      setRightRules(b);
+      setCompared(true);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Comparison failed.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  const comparison = useMemo(() => {
+    const keyFor = (r: ComparisonRule) =>
+      normalise(r.category || r.rule_type) + "|" +
+      normalise(r.title || r.action || r.plain_language_explanation);
+
+    const leftMap = new Map<string, ComparisonRule[]>();
+    const rightMap = new Map<string, ComparisonRule[]>();
+
+    leftRules.forEach(r => {
+      const key = keyFor(r);
+      leftMap.set(key, [...(leftMap.get(key) || []), r]);
+    });
+
+    rightRules.forEach(r => {
+      const key = keyFor(r);
+      rightMap.set(key, [...(rightMap.get(key) || []), r]);
+    });
+
+    const keys = Array.from(new Set([...leftMap.keys(), ...rightMap.keys()]));
+
+    return keys.map(key => {
+      const a = leftMap.get(key)?.[0] || null;
+      const b = rightMap.get(key)?.[0] || null;
+
+      let status = "matching";
+      if (!a) status = "only-right";
+      else if (!b) status = "only-left";
+      else {
+        const fields: (keyof ComparisonRule)[] = [
+          "actor", "beneficiary", "modality", "action",
+          "trigger_condition", "deadline_or_duration",
+          "amount_or_formula", "exceptions_or_qualifications",
+          "consequence_or_remedy",
+        ];
+        if (fields.some(field => normalise(String(a[field] ?? "")) !== normalise(String(b[field] ?? "")))) {
+          status = "different";
+        }
+      }
+
+      return { key, a, b, status };
+    });
+  }, [leftRules, rightRules]);
+
+  const visible = comparison.filter(item => filter === "all" || item.status === filter);
+  const leftName = documents.find(d => d.document_id === leftId)?.original_filename ||
+    documents.find(d => d.document_id === leftId)?.filename || "Contract A";
+  const rightName = documents.find(d => d.document_id === rightId)?.original_filename ||
+    documents.find(d => d.document_id === rightId)?.filename || "Contract B";
+
+  const statusLabel = (status: string) => ({
+    matching: "Matching rule",
+    different: "Different terms",
+    "only-left": "Only in first contract",
+    "only-right": "Only in second contract",
+  }[status] || status);
+
+  return (
+    <>
+      <PageHeading
+        eyebrow="INTELLIGENCE / COMPARISON"
+        title="Contract comparison"
+        description="Compare extracted contractual rules across two indexed contracts."
+      />
+
+      <section className="panel" style={{ padding: 18, marginBottom: 18 }}>
+        <div className="panel-heading">
+          <div>
+            <h3 style={{ fontSize: 21 }}>Select contracts</h3>
+            <p style={{ fontSize: 15, lineHeight: 1.7 }}>Choose two different indexed contracts to compare their extracted rules.</p>
+          </div>
+        </div>
+
+        <div style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit, minmax(230px, 1fr))",
+          gap: 14,
+        }}>
+          <label>
+            <span style={{ display: "block", marginBottom: 7, fontSize: 16, fontWeight: 700 }}>First contract</span>
+            <select className="select-button" style={{ fontSize: 15, minHeight: 44 }} value={leftId} onChange={e => { setLeftId(e.target.value); setCompared(false); }}>
+              <option value="">Select contract</option>
+              {documents.map(d => <option key={d.document_id} value={d.document_id}>{d.original_filename || d.filename}</option>)}
+            </select>
+          </label>
+
+          <label>
+            <span style={{ display: "block", marginBottom: 7, fontSize: 16, fontWeight: 700 }}>Second contract</span>
+            <select className="select-button" style={{ fontSize: 15, minHeight: 44 }} value={rightId} onChange={e => { setRightId(e.target.value); setCompared(false); }}>
+              <option value="">Select contract</option>
+              {documents.map(d => <option key={d.document_id} value={d.document_id}>{d.original_filename || d.filename}</option>)}
+            </select>
+          </label>
+        </div>
+
+        <button
+          className="button button-primary"
+          style={{ marginTop: 16 }}
+          onClick={runComparison}
+          disabled={loading || !leftId || !rightId || leftId === rightId}
+        >
+          {loading ? "Comparing..." : "Compare contracts"}
+          <ArrowRight size={15}/>
+        </button>
+
+        {error && <p style={{ color: "#c44", marginTop: 12 }}>{error}</p>}
+      </section>
+
+      {compared && (
+        <>
+          <div className="metrics-grid">
+            <MetricCard label="Rules in first contract" value={String(leftRules.length)} note={leftName} icon={FileText} tone="blue"/>
+            <MetricCard label="Rules in second contract" value={String(rightRules.length)} note={rightName} icon={FileText} tone="violet"/>
+            <MetricCard label="Different terms" value={String(comparison.filter(x => x.status === "different").length)} note="Matched categories with differing fields" icon={AlertTriangle} tone="amber"/>
+            <MetricCard label="Contract-specific rules" value={String(comparison.filter(x => x.status === "only-left" || x.status === "only-right").length)} note="No matching extracted rule found" icon={FileSearch} tone="green"/>
+          </div>
+
+          <section className="panel obligation-results-panel" style={{ marginTop: 18 }}>
+            <div className="panel-heading">
+              <div>
+                <h3>Comparison findings</h3>
+                <p>Rule-level comparison based on extracted categories and titles. Similarity is not a legal equivalence determination.</p>
+              </div>
+              <span className="status-pill">{visible.length} findings</span>
+            </div>
+
+            <div style={{ padding: "0 18px 16px", display: "flex", gap: 8, flexWrap: "wrap" }}>
+              {[
+                ["all", "All findings"],
+                ["different", "Different"],
+                ["only-left", "First only"],
+                ["only-right", "Second only"],
+                ["matching", "Matching"],
+              ].map(([value, label]) => (
+                <button
+                  key={value}
+                  className={filter === value ? "button button-primary" : "button button-outline"}
+                  onClick={() => setFilter(value)}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+
+            <div style={{ display: "grid", gap: 12, padding: 18 }}>
+              {visible.map(item => (
+                <article key={item.key} style={{ border: "1px solid var(--border, #e5e7eb)", borderRadius: 12, padding: 16 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap", marginBottom: 12 }}>
+                    <strong>{item.a?.title || item.b?.title || item.a?.category || item.b?.category || "Contract rule"}</strong>
+                    <span className="status-pill">{statusLabel(item.status)}</span>
+                  </div>
+
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 12 }}>
+                    {[{ label: leftName, rule: item.a }, { label: rightName, rule: item.b }].map((side, index) => (
+                      <div key={index} style={{ background: "var(--surface-secondary, #f7f7fa)", padding: 13, borderRadius: 9 }}>
+                        <b style={{ fontSize: 13 }}>{side.label}</b>
+                        {!side.rule ? (
+                          <p style={{ opacity: 0.65, fontSize: 13 }}>No matching extracted rule found.</p>
+                        ) : (
+                          <>
+                            <p style={{ fontSize: 13, lineHeight: 1.5, marginTop: 9 }}>
+                              {side.rule.plain_language_explanation || "No plain-language explanation extracted."}
+                            </p>
+                            {side.rule.amount_or_formula && <p style={{ fontSize: 13 }}><b>Amount/formula:</b> {side.rule.amount_or_formula}</p>}
+                            {side.rule.deadline_or_duration && <p style={{ fontSize: 13 }}><b>Timeline:</b> {side.rule.deadline_or_duration}</p>}
+                            {side.rule.actor && <p style={{ fontSize: 13 }}><b>Responsible party:</b> {side.rule.actor}</p>}
+                            {side.rule.page_number && <p style={{ fontSize: 12, opacity: 0.7 }}>Page {side.rule.page_number}</p>}
+                            <details style={{ marginTop: 9 }}>
+                              <summary style={{ cursor: "pointer", fontSize: 13, fontWeight: 600 }}>Original wording</summary>
+                              <blockquote style={{ fontSize: 12, lineHeight: 1.5, marginTop: 8, paddingLeft: 10, borderLeft: "3px solid #8b7cf6" }}>
+                                {side.rule.original_text || "No original wording stored."}
+                              </blockquote>
+                            </details>
+                          </>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </article>
+              ))}
+              {visible.length === 0 && <p style={{ padding: 20 }}>No findings in this filter.</p>}
+            </div>
+          </section>
+
+          <div className="demo-disclaimer" style={{ marginTop: 16 }}>
+            <ShieldAlert size={14}/>
+            Automated comparison is based on extracted rule labels and selected fields. It may miss differently worded equivalent clauses or incorrectly group similar titles. Review both original contracts before relying on a finding.
+          </div>
+        </>
+      )}
+    </>
+  );
+}
+
+
+===== DraftingView =====
+function DraftingView({
+  documents,
+  selectedDocumentId,
+  setSelectedDocumentId,
+  setActive,
+  onExit,
+}: {
+  documents: IndexedDocument[];
+  selectedDocumentId: string;
+  setSelectedDocumentId: (id: string) => void;
+  setActive: (section: Section) => void;
+  onExit: () => void;
+}) {
+  const [mode, setMode] = useState<"clause" | "negotiation" | null>(null);
+  const [brief, setBrief] = useState("");
+  const [result, setResult] = useState("");
+  const [sources, setSources] = useState<Array<{page: number; text: string}>>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  async function runWorkflow(e: React.FormEvent) {
+    e.preventDefault();
+
+    if (!selectedDocumentId) {
+      setError("Please select a contract first.");
+      return;
+    }
+
+    if (!brief.trim()) {
+      setError("Please describe what you want to draft or negotiate.");
+      return;
+    }
+
+    setLoading(true);
+    setError("");
+    setResult("");
+    setSources([]);
+
+    const prompt = mode === "clause"
+      ? `Prepare a proposed first-draft contractual clause using the relevant passages from this agreement as context.
+
+Requested clause and drafting instructions:
+${brief}
+
+Requirements:
+- Clearly label the wording as a proposed draft, not an existing contractual term.
+- Use relevant defined terms consistently where supported by the contract.
+- Do not invent party names, amounts, dates or obligations.
+- Identify assumptions or missing information separately.
+- Keep the proposed clause clear and professionally structured.
+- State that qualified human legal review is required before use.`
+      : `Prepare structured contract negotiation points based on the relevant provisions of this agreement.
+
+Negotiation topic and instructions:
+${brief}
+
+For each point provide:
+1. Existing contractual position, with supporting evidence.
+2. Potential concern or negotiation opportunity.
+3. Suggested negotiation position.
+4. Suggested discussion rationale.
+5. Priority: High, Medium or Low, explaining why.
+
+Clearly distinguish contract wording from recommendations. Do not invent contractual facts.`;
+
+    try {
+      const response = await fetch(
+        `${API_URL}/api/documents/${selectedDocumentId}/ask`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ question: prompt }),
+        }
+      );
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.detail || "The workflow could not be completed.");
+      }
+
+      setResult(data.answer || "No generated response was returned.");
+      setSources(data.sources || []);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Workflow failed.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  const resetWorkflow = () => {
+    setMode(null);
+    setBrief("");
+    setResult("");
+    setSources([]);
+    setError("");
+  };
+
+  return (
+    <>
+      <PageHeading
+        eyebrow="CONTRACT WORKSPACE / DRAFTING"
+        title="Contract drafting"
+        description="Prepare clause alternatives, negotiation notes and amendment comparisons using your indexed contracts."
+        action={
+          <button type="button" className="button button-outline" onClick={onExit}>
+            <ChevronLeft size={16}/> Exit Drafting
+          </button>
+        }
+      />
+
+      <section className="panel" style={{ padding: 18, marginBottom: 18 }}>
+        <label style={{ display: "block", fontSize: 13, fontWeight: 700, marginBottom: 9 }}>
+          SELECT CONTRACT
+        </label>
+        <select
+          value={selectedDocumentId}
+          onChange={e => {
+            setSelectedDocumentId(e.target.value);
+            resetWorkflow();
+          }}
+          style={{
+            width: "100%",
+            maxWidth: 650,
+            padding: 12,
+            fontSize: 15,
+            border: "1px solid #E2E6EE",
+            borderRadius: 9,
+          }}
+        >
+          <option value="">Select an indexed contract</option>
+          {documents.map(doc => (
+            <option key={doc.document_id} value={doc.document_id}>
+              {doc.original_filename || doc.filename}
+            </option>
+          ))}
+        </select>
+      </section>
+
+      {!mode && (
+        <div className="draft-grid">
+          <article className="panel draft-card">
+            <div className="draft-icon"><FileText size={20}/></div>
+            <h3>Draft a Contract Clause</h3>
+            <p>Generate a proposed first draft using the selected agreement as context.</p>
+            <button
+              type="button"
+              className="text-button"
+              onClick={() => { setError(""); setMode("clause"); }}
+            >
+              Open clause drafting <ArrowRight size={14}/>
+            </button>
+          </article>
+
+          <article className="panel draft-card">
+            <div className="draft-icon"><MessageSquareText size={20}/></div>
+            <h3>Contract Negotiation Points</h3>
+            <p>Generate structured negotiation positions grounded in the selected contract.</p>
+            <button
+              type="button"
+              className="text-button"
+              onClick={() => { setError(""); setMode("negotiation"); }}
+            >
+              Open negotiation workflow <ArrowRight size={14}/>
+            </button>
+          </article>
+
+          <article className="panel draft-card">
+            <div className="draft-icon"><FileCheck2 size={20}/></div>
+            <h3>Contract Amendment Summary</h3>
+            <p>Compare two contracts to identify changed terms, additional rules and omissions.</p>
+            <button
+              type="button"
+              className="text-button"
+              onClick={() => setActive("Compare Contracts")}
+            >
+              Open contract comparison <ArrowRight size={14}/>
+            </button>
+          </article>
+        </div>
+      )}
+
+      {mode && (
+        <section className="panel" style={{ padding: 22, marginTop: 18 }}>
+          <div className="panel-heading">
+            <div>
+              <h3 style={{ fontSize: 21 }}>
+                {mode === "clause" ? "Draft a Contract Clause" : "Contract Negotiation Points"}
+              </h3>
+              <p>
+                {mode === "clause"
+                  ? "Describe the clause you need drafted."
+                  : "Describe the terms or issues you want to negotiate."}
+              </p>
+            </div>
+            <button type="button" className="button button-outline" onClick={resetWorkflow}>
+              Back to workflows
+            </button>
+          </div>
+
+          <form onSubmit={runWorkflow}>
+            <label style={{ display: "block", fontSize: 14, fontWeight: 700, margin: "16px 0 8px" }}>
+              {mode === "clause" ? "CLAUSE REQUIREMENTS" : "NEGOTIATION OBJECTIVE"}
+            </label>
+            <textarea
+              value={brief}
+              onChange={e => setBrief(e.target.value)}
+              rows={5}
+              placeholder={
+                mode === "clause"
+                  ? "Example: Draft a service-level clause specifying uptime, support response times and service credits."
+                  : "Example: Identify negotiation points concerning payment milestones, liability limits and termination notice."
+              }
+              style={{
+                width: "100%",
+                boxSizing: "border-box",
+                padding: 13,
+                border: "1px solid #D9DEE8",
+                borderRadius: 9,
+                font: "inherit",
+                fontSize: 15,
+                lineHeight: 1.7,
+              }}
+            />
+
+            {error && <p role="alert" style={{ color: "#B42318" }}>{error}</p>}
+
+            <button
+              type="submit"
+              className="button button-primary"
+              disabled={loading || !selectedDocumentId}
+              style={{ marginTop: 14 }}
+            >
+              {loading ? "Generating..." : "Generate"}
+              <ArrowRight size={15}/>
+            </button>
+          </form>
+
+          {result && (
+            <div style={{ marginTop: 22, borderTop: "1px solid #E7EAF0", paddingTop: 18 }}>
+              <h3>Generated output</h3>
+              <div style={{
+                whiteSpace: "pre-wrap",
+                fontSize: 15,
+                lineHeight: 1.8,
+                padding: 16,
+                background: "#F7F8FB",
+                borderRadius: 9,
+              }}>
+                {result}
+              </div>
+
+              {sources.length > 0 && (
+                <div style={{ marginTop: 18 }}>
+                  <h4>Supporting contract evidence</h4>
+                  {sources.map((source, index) => (
+                    <blockquote
+                      key={index}
+                      style={{
+                        margin: "10px 0",
+                        padding: 12,
+                        borderLeft: "3px solid #897AF1",
+                        background: "#FAFAFC",
+                        fontSize: 13,
+                        lineHeight: 1.6,
+                      }}
+                    >
+                      <b>Page {source.page}</b>
+                      <p>{source.text}</p>
+                    </blockquote>
+                  ))}
+                </div>
+              )}
+
+              <button
+                type="button"
+                className="button button-outline"
+                onClick={() => navigator.clipboard.writeText(result)}
+                style={{ marginTop: 12 }}
+              >
+                Copy generated output
+              </button>
+            </div>
+          )}
+        </section>
+      )}
+
+      <div className="demo-disclaimer" style={{ marginTop: 18 }}>
+        <ShieldAlert size={14}/>
+        Generated clauses and negotiation points are preliminary drafting aids. They are not approved legal language. Verify source evidence and obtain qualified legal review before use.
+      </div>
+    </>
+  );
+}
+
+===== SettingsView =====
+function SettingsView() {
+  const sections = [
+    {
+      title: "Organisation Profile",
+      subtitle: "Company identity and workspace information",
+      icon: BriefcaseBusiness,
+      status: "In progress",
+      description: "Organisation details and default business information.",
+      rows: [
+        ["Organisation Name", "3 Beacons"],
+        ["Registered Address", "Bangalore"],
+        ["Business Unit", "Software Development"],
+        ["Default Currency", "Indian Rupee (INR)"],
+        ["Organisation Details", "In progress"],
+      ],
+    },
+    {
+      title: "Users & Access Control",
+      subtitle: "Members, roles and workspace permissions",
+      icon: Activity,
+      status: "Configured",
+      description: "Workspace members and their access responsibilities.",
+      rows: [
+        ["User Directory", "Sakshi, Amit"],
+        ["Amit — Admin Role", "Tech Head"],
+        ["Reviewer Access", "Admin, Viewer"],
+        ["Permissions", "Read, Write"],
+        ["Team Responsibilities", "Yes"],
+      ],
+    },
+    {
+      title: "Risk & Review Policies",
+      subtitle: "Risk classification and contract review standards",
+      icon: ShieldAlert,
+      status: "Review workflow available",
+      description:
+        "Review identified contract risks and findings. Organisation-wide policy configuration is not currently enabled.",
+      rows: [
+        ["Risk Findings", "Available for review"],
+        ["Human Review", "Required"],
+        ["Policy Configuration", "Not configured"],
+      ],
+    },
+    {
+      title: "Notifications & Reminders",
+      subtitle: "Renewals, deadlines and pending reviews",
+      icon: Bell,
+      status: "Not configured",
+      description: "Notification preferences and reminder schedules.",
+      rows: [
+        ["Contract Expiry Alerts", "Not configured"],
+        ["Renewal Reminders", "Not configured"],
+        ["Pending Review Notifications", "Not configured"],
+        ["Obligation Deadlines", "Not configured"],
+      ],
+    },
+    {
+      title: "HeronIDP & Document Processing",
+      subtitle: "HeronIDPservices and document analysis preferences",
+      icon: Bot,
+      status: "System information",
+      description:
+        "HeronIDP service and document-processing configuration. Live service status is shown on the system health panel.",
+      rows: [
+        ["HeronIDP Model", "See live system health"],
+        ["Extraction Preferences", "Not configured"],
+        ["Supported File Types", "PDF"],
+        ["Human Review", "Required"],
+      ],
+    },
+    {
+      title: "Audit, Security & Data",
+      subtitle: "Data governance and security controls",
+      icon: Settings,
+      status: "Not configured",
+      description: "Audit history, document access and data-retention settings.",
+      rows: [
+        ["Activity History", "Not configured"],
+        ["Document Access Records", "Not configured"],
+        ["Data Retention", "Not configured"],
+        ["Security Controls", "Not configured"],
+      ],
+    },
+  ];
+
+  return (
+    <>
+      <PageHeading
+        eyebrow="WORKSPACE / ADMINISTRATION"
+        title="Organisation Settings"
+        description="View organisation details, workspace members, access responsibilities and contract review preferences."
+      />
+
+      <div className="settings-intro panel">
+        <div className="settings-intro-mark">
+          <BriefcaseBusiness size={23} />
+        </div>
+        <div>
+          <b>3 Beacons</b>
+          <p>
+            Organisation profile and workspace information. Settings marked
+            as not configured are displayed for reference and are not yet
+            editable in this prototype.
+          </p>
+        </div>
+      </div>
+
+      <div className="settings-grid">
+        {sections.map((section) => {
+          const Icon = section.icon;
+
+          return (
+            <details className="panel setting-card" key={section.title}>
+              <summary>
+                <div className="setting-icon">
+                  <Icon size={21} />
+                </div>
+
+                <div className="setting-card-copy">
+                  <b>{section.title}</b>
+                  <p>{section.subtitle}</p>
+                  <span className="settings-status">
+                    {section.status}
+                  </span>
+                </div>
+
+                <ChevronRight
+                  size={19}
+                  className="setting-chevron"
+                />
+              </summary>
+
+              <div className="setting-detail">
+                <p>{section.description}</p>
+
+                <div className="settings-item-list">
+                  {section.rows.map(([label, value]) => (
+                    <div className="settings-data-row" key={label}>
+                      <span className="settings-data-label">
+                        {label}
+                      </span>
+                      <strong>{value}</strong>
+                    </div>
+                  ))}
+                </div>
+
+                {section.title === "Users & Access Control" && (
+                  <div className="settings-note">
+                    <b>Access information</b>
+                    <p>
+                      Amit is listed with the Admin Role of Tech Head.
+                      Reviewer access options are Admin and Viewer.
+                      Listed permissions are Read and Write.
+                    </p>
+                  </div>
+                )}
+
+                <small>
+                  Configuration changes are not enabled in this prototype.
+                </small>
+              </div>
+            </details>
+          );
+        })}
+      </div>
+    </>
+  );
+}
+
+

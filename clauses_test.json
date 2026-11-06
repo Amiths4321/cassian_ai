@@ -1,0 +1,90 @@
+﻿[
+    {
+        "id":  33,
+        "clause_reference":  "1",
+        "heading":  "Services",
+        "original_text":  "Services Provider will configure and support a sales analytics dashboard for Customer, including data import, dashboard setup, user training and monthly technical support. The initial implementation is expected to be completed within 30 calendar days after the Effective Date.",
+        "page_start":  1,
+        "page_end":  1,
+        "extraction_status":  "completed",
+        "confidence":  0.0,
+        "review_status":  "pending"
+    },
+    {
+        "id":  34,
+        "clause_reference":  "2",
+        "heading":  "Fees and Payment",
+        "original_text":  "Customer will pay Provider a fixed implementation fee of INR 4,80,000 (Indian Rupees Four Lakh Eighty Thousand), exclusive of applicable taxes. Provider will invoice 50% on signing and 50% on completion of implementation. Each undisputed invoice is payable within 30 calendar days of receipt.",
+        "page_start":  1,
+        "page_end":  1,
+        "extraction_status":  "completed",
+        "confidence":  0.0,
+        "review_status":  "pending"
+    },
+    {
+        "id":  35,
+        "clause_reference":  "1",
+        "heading":  "Term and Renewal",
+        "original_text":  "This Agreement begins on 1 October 2026 and continues for an initial term of 12 months, ending on 30 September 2027 (the âInitial Termâ). It will automatically renew for successive 12-month periods unless either party gives written notice of non-renewal at least 60 days before the end of the then-current term.",
+        "page_start":  1,
+        "page_end":  1,
+        "extraction_status":  "completed",
+        "confidence":  0.0,
+        "review_status":  "pending"
+    },
+    {
+        "id":  36,
+        "clause_reference":  "4",
+        "heading":  "Termination",
+        "original_text":  "Either party may terminate this Agreement for a material breach if the other party fails to remedy that breach within 30 days after receiving written notice. Customer may also terminate for convenience by giving Provider 60 daysâ written notice. Customer must pay fees for services properly performed up to the effective termination date.",
+        "page_start":  1,
+        "page_end":  1,
+        "extraction_status":  "completed",
+        "confidence":  0.0,
+        "review_status":  "pending"
+    },
+    {
+        "id":  37,
+        "clause_reference":  "5",
+        "heading":  "Limitation of Liability",
+        "original_text":  "Except for fraud, wilful misconduct, breach of confidentiality or infringement of intellectual property rights, each partyâs total aggregate liability arising out of this Agreement will not exceed the fees paid or payable under this Agreement in the 12 months preceding the event giving rise to the claim. Neither party will be liable for indirect or consequential loss, loss of profit or loss of anticipated savings.",
+        "page_start":  1,
+        "page_end":  1,
+        "extraction_status":  "completed",
+        "confidence":  0.0,
+        "review_status":  "pending"
+    },
+    {
+        "id":  38,
+        "clause_reference":  "6",
+        "heading":  "Confidentiality",
+        "original_text":  "Each party must protect the other partyâs non-public business, technic",
+        "page_start":  1,
+        "page_end":  1,
+        "extraction_status":  "completed",
+        "confidence":  0.0,
+        "review_status":  "pending"
+    },
+    {
+        "id":  39,
+        "clause_reference":  "6",
+        "heading":  "Confidentiality",
+        "original_text":  "Each party must protect the other partyâs non-public business, technical and commercial information using at least reasonable care and may use it only to perform or receive services under this Agreement. These obligations continue for 3 years after termination or expiry.",
+        "page_start":  1,
+        "page_end":  1,
+        "extraction_status":  "completed",
+        "confidence":  0.0,
+        "review_status":  "pending"
+    },
+    {
+        "id":  40,
+        "clause_reference":  "7",
+        "heading":  "Governing Law",
+        "original_text":  "This Agreement is governed by the laws of India. The courts in Mumbai, Maharashtra will have exclusive jurisdiction over disputes arising from this Agreement.",
+        "page_start":  1,
+        "page_end":  1,
+        "extraction_status":  "completed",
+        "confidence":  0.0,
+        "review_status":  "pending"
+    }
+]

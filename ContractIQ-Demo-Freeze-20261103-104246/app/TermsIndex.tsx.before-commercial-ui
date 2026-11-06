@@ -1,0 +1,870 @@
+"use client";
+
+import { useEffect, useMemo, useState } from "react";
+import {
+  AlertTriangle,
+  CheckCircle2,
+  FileSearch,
+  RefreshCw,
+  Search,
+  Sparkles,
+  XCircle,
+} from "lucide-react";
+
+const API_URL =
+  process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
+
+type IndexedDocument = {
+  document_id: string;
+  filename: string;
+  original_filename?: string;
+  pages_indexed: number;
+  chunks_created: number;
+  status: string;
+};
+
+type ContractTerm = {
+  id: number;
+  term_category: string;
+  term_name: string;
+  original_text: string;
+  clause_reference: string | null;
+  page_number: number | null;
+  interpretation: string | null;
+  confidence: number | null;
+  effective_date: string | null;
+  expiry_date: string | null;
+  financial_impact: string | null;
+  missing_information: string[] | null;
+  review_status: string;
+  review_notes: string | null;
+};
+
+type Props = {
+  documents: IndexedDocument[];
+  selectedDocumentId: string;
+  setSelectedDocumentId: (id: string) => void;
+};
+
+export default function TermsIndex({
+  documents,
+  selectedDocumentId,
+  setSelectedDocumentId,
+}: Props) {
+  const [terms, setTerms] = useState<ContractTerm[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [extracting, setExtracting] = useState(false);
+  const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+  const [search, setSearch] = useState("");
+  const [categoryFilter, setCategoryFilter] = useState("all");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [refreshKey, setRefreshKey] = useState(0);
+  const [savingId, setSavingId] = useState<number | null>(null);
+  const [notes, setNotes] = useState<Record<number, string>>({});
+  const [expandedId, setExpandedId] = useState<number | null>(null);
+  const [sourceEvidence, setSourceEvidence] = useState<Record<number, string>>({});
+  const [sourceLoadingId, setSourceLoadingId] = useState<number | null>(null);
+
+  const selected = documents.find(
+    (doc) => doc.document_id === selectedDocumentId
+  );
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadTerms() {
+      if (!selectedDocumentId) {
+        setTerms([]);
+        return;
+      }
+
+      setLoading(true);
+      setError("");
+      setNotice("");
+
+      try {
+        const response = await fetch(
+          `${API_URL}/api/documents/${selectedDocumentId}/terms`
+        );
+
+        const data = await response.json();
+
+        if (!response.ok) {
+          throw new Error(data.detail || "Could not load contract terms.");
+        }
+
+        const rows = Array.isArray(data.terms)
+          ? data.terms
+          : Array.isArray(data)
+            ? data
+            : [];
+
+        if (!cancelled) {
+          setTerms(rows);
+          setNotes({});
+          setExpandedId(null);
+          setSourceEvidence({});
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setError(
+            err instanceof Error ? err.message : "Could not load contract terms."
+          );
+          setTerms([]);
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+
+    loadTerms();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedDocumentId, refreshKey]);
+
+  const categories = useMemo(
+    () =>
+      Array.from(
+        new Set(terms.map((term) => term.term_category).filter(Boolean))
+      ).sort(),
+    [terms]
+  );
+
+  const pendingCount = terms.filter(
+    (term) => term.review_status === "pending"
+  ).length;
+
+  const approvedCount = terms.filter(
+    (term) => term.review_status === "approved"
+  ).length;
+
+  const rejectedCount = terms.filter(
+    (term) => term.review_status === "rejected"
+  ).length;
+
+  const lowConfidenceCount = terms.filter(
+    (term) =>
+      typeof term.confidence === "number" && term.confidence < 0.75
+  ).length;
+
+  const filteredTerms = terms.filter((term) => {
+    const searchable = [
+      term.term_name,
+      term.term_category,
+      term.clause_reference,
+      term.original_text,
+      term.interpretation,
+      term.financial_impact,
+    ]
+      .filter(Boolean)
+      .join(" ")
+      .toLowerCase();
+
+    const matchesSearch = searchable.includes(search.toLowerCase());
+    const matchesCategory =
+      categoryFilter === "all" || term.term_category === categoryFilter;
+
+    const matchesStatus =
+      statusFilter === "all" ||
+      (statusFilter === "low-confidence"
+        ? typeof term.confidence === "number" && term.confidence < 0.75
+        : term.review_status === statusFilter);
+
+    return matchesSearch && matchesCategory && matchesStatus;
+  });
+
+  async function extractTerms() {
+    if (!selectedDocumentId || extracting) return;
+
+    setExtracting(true);
+    setError("");
+    setNotice("");
+
+    try {
+      const response = await fetch(
+        `${API_URL}/api/documents/${selectedDocumentId}/extract-terms`,
+        { method: "POST" }
+      );
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.detail || "Term extraction failed.");
+      }
+
+      setNotice(
+        `Extraction completed. ${data.terms_saved ?? 0} new terms saved; ${data.unsupported_or_invalid_items_rejected ?? 0} unsupported items rejected.`
+      );
+
+      setRefreshKey((value) => value + 1);
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : "Term extraction failed."
+      );
+    } finally {
+      setExtracting(false);
+    }
+  }
+
+  async function updateReview(
+    term: ContractTerm,
+    reviewStatus: "pending" | "approved" | "rejected"
+  ) {
+    setSavingId(term.id);
+    setError("");
+    setNotice("");
+
+    const reviewNotes = notes[term.id] ?? term.review_notes ?? "";
+
+    try {
+      const response = await fetch(
+        `${API_URL}/api/documents/${selectedDocumentId}/terms/${term.id}/review`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            review_status: reviewStatus,
+            review_notes: reviewNotes || null,
+          }),
+        }
+      );
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.detail || "Could not save review decision.");
+      }
+
+      setTerms((previous) =>
+        previous.map((item) =>
+          item.id === term.id
+            ? {
+                ...item,
+                review_status: reviewStatus,
+                review_notes: reviewNotes || null,
+              }
+            : item
+        )
+      );
+
+      setNotice(`Term #${term.id} review status saved as ${reviewStatus}.`);
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : "Could not save review decision."
+      );
+    } finally {
+      setSavingId(null);
+    }
+  }
+
+  async function toggleSource(term: ContractTerm) {
+    if (expandedId === term.id) {
+      setExpandedId(null);
+      return;
+    }
+
+    setExpandedId(term.id);
+
+    if (sourceEvidence[term.id]) return;
+
+    setSourceLoadingId(term.id);
+
+    try {
+      const response = await fetch(
+        `${API_URL}/api/documents/${selectedDocumentId}/terms/${term.id}`
+      );
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.detail || "Could not load source passage.");
+      }
+
+      setSourceEvidence((previous) => ({
+        ...previous,
+        [term.id]: data.source_evidence || term.original_text,
+      }));
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : "Could not load source passage."
+      );
+      setSourceEvidence((previous) => ({
+        ...previous,
+        [term.id]: term.original_text,
+      }));
+    } finally {
+      setSourceLoadingId(null);
+    }
+  }
+
+  function displayDate(value: string | null) {
+    return value ? value.slice(0, 10) : "Not specified";
+  }
+
+  const cardStyle: React.CSSProperties = {
+    border: "1px solid #E4E8F0",
+    borderRadius: 12,
+    padding: 16,
+    background: "#fff",
+  };
+
+  const mutedStyle: React.CSSProperties = {
+    color: "#6B7890",
+    fontSize: 13,
+    lineHeight: 1.6,
+  };
+
+  return (
+    <>
+      <div className="page-heading">
+        <div>
+          <div className="eyebrow">INTELLIGENCE / CONTRACT DATA</div>
+          <h1>Contract Terms Index</h1>
+          <p>
+            Review structured contractual terms with source wording, clause
+            references and extraction confidence.
+          </p>
+        </div>
+      </div>
+
+      <section className="panel" style={{ padding: 20, marginBottom: 18 }}>
+        <label
+          htmlFor="terms-contract-select"
+          style={{
+            display: "block",
+            fontSize: 13,
+            fontWeight: 700,
+            marginBottom: 9,
+          }}
+        >
+          SELECT CONTRACT
+        </label>
+
+        <div
+          style={{
+            display: "flex",
+            gap: 12,
+            flexWrap: "wrap",
+            alignItems: "center",
+          }}
+        >
+          <select
+            id="terms-contract-select"
+            value={selectedDocumentId}
+            onChange={(event) => setSelectedDocumentId(event.target.value)}
+            style={{
+              flex: "1 1 320px",
+              maxWidth: 650,
+              minHeight: 44,
+              padding: "10px 12px",
+              border: "1px solid #DCE2EC",
+              borderRadius: 8,
+              background: "#fff",
+              fontSize: 15,
+            }}
+          >
+            <option value="">Select an indexed contract</option>
+            {documents.map((doc) => (
+              <option key={doc.document_id} value={doc.document_id}>
+                {doc.original_filename || doc.filename}
+              </option>
+            ))}
+          </select>
+
+          <button
+            type="button"
+            className="button button-primary"
+            onClick={extractTerms}
+            disabled={!selectedDocumentId || extracting || loading}
+          >
+            <Sparkles size={15} />
+            {extracting ? "Extracting terms..." : "Extract contract terms"}
+          </button>
+
+          <button
+            type="button"
+            className="button button-outline"
+            onClick={() => setRefreshKey((value) => value + 1)}
+            disabled={!selectedDocumentId || loading || extracting}
+          >
+            <RefreshCw size={15} />
+            Refresh
+          </button>
+        </div>
+
+        {selected && (
+          <p style={{ ...mutedStyle, margin: "9px 0 0" }}>
+            {selected.pages_indexed} pages · {selected.chunks_created} text
+            chunks · {selected.status}
+          </p>
+        )}
+      </section>
+
+      <div className="metrics-grid">
+        <div style={cardStyle}>
+          <div style={mutedStyle}>Total extracted terms</div>
+          <div style={{ fontSize: 29, fontWeight: 750 }}>{terms.length}</div>
+          <div style={mutedStyle}>Terms in the selected contract</div>
+        </div>
+        <div style={cardStyle}>
+          <div style={mutedStyle}>Pending human review</div>
+          <div style={{ fontSize: 29, fontWeight: 750 }}>{pendingCount}</div>
+          <div style={mutedStyle}>Awaiting reviewer decision</div>
+        </div>
+        <div style={cardStyle}>
+          <div style={mutedStyle}>Approved</div>
+          <div style={{ fontSize: 29, fontWeight: 750 }}>{approvedCount}</div>
+          <div style={mutedStyle}>Approved extractions</div>
+        </div>
+        <div style={cardStyle}>
+          <div style={mutedStyle}>Low confidence</div>
+          <div style={{ fontSize: 29, fontWeight: 750 }}>{lowConfidenceCount}</div>
+          <div style={mutedStyle}>Below 75% confidence</div>
+        </div>
+      </div>
+
+      <section className="panel" style={{ marginTop: 18 }}>
+        <div className="panel-heading" style={{ padding: 20 }}>
+          <div>
+            <h3 style={{ fontSize: 20 }}>Extracted contractual terms</h3>
+            <p>Source-backed terms and human validation status</p>
+          </div>
+          <span className="status-pill">{filteredTerms.length} terms</span>
+        </div>
+
+        <div
+          style={{
+            display: "flex",
+            gap: 10,
+            flexWrap: "wrap",
+            padding: "0 20px 18px",
+          }}
+        >
+          <div style={{ flex: "1 1 240px", position: "relative" }}>
+            <Search
+              size={16}
+              style={{
+                position: "absolute",
+                left: 11,
+                top: 13,
+                color: "#8994A5",
+              }}
+            />
+            <input
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder="Search term, clause or source wording..."
+              style={{
+                width: "100%",
+                boxSizing: "border-box",
+                padding: "11px 12px 11px 35px",
+                border: "1px solid #DCE2EC",
+                borderRadius: 8,
+                fontSize: 14,
+              }}
+            />
+          </div>
+
+          <select
+            value={categoryFilter}
+            onChange={(event) => setCategoryFilter(event.target.value)}
+            style={{
+              padding: 10,
+              border: "1px solid #DCE2EC",
+              borderRadius: 8,
+              background: "#fff",
+            }}
+          >
+            <option value="all">All categories</option>
+            {categories.map((category) => (
+              <option value={category} key={category}>
+                {category}
+              </option>
+            ))}
+          </select>
+
+          <select
+            value={statusFilter}
+            onChange={(event) => setStatusFilter(event.target.value)}
+            style={{
+              padding: 10,
+              border: "1px solid #DCE2EC",
+              borderRadius: 8,
+              background: "#fff",
+            }}
+          >
+            <option value="all">All review statuses</option>
+            <option value="pending">Pending</option>
+            <option value="approved">Approved</option>
+            <option value="rejected">Rejected</option>
+            <option value="low-confidence">Low confidence</option>
+          </select>
+        </div>
+
+        {loading && (
+          <p style={{ padding: 20 }} role="status">
+            Loading contract terms...
+          </p>
+        )}
+
+        {extracting && (
+          <p style={{ padding: 20 }} role="status">
+            Heron IDP is viewing the contract and extracting supported terms...
+          </p>
+        )}
+
+        {error && (
+          <div
+            role="alert"
+            style={{
+              margin: 18,
+              padding: 13,
+              borderRadius: 8,
+              background: "#FEF2F2",
+              color: "#B42318",
+            }}
+          >
+            {error}
+          </div>
+        )}
+
+        {notice && (
+          <p
+            role="status"
+            style={{ margin: 18, color: "#16845D", fontSize: 13 }}
+          >
+            {notice}
+          </p>
+        )}
+
+        {!loading && !error && !selectedDocumentId && (
+          <div className="empty-state" style={{ padding: 35 }}>
+            Select an indexed contract to view or extract its terms.
+          </div>
+        )}
+
+        {!loading &&
+          !extracting &&
+          selectedDocumentId &&
+          terms.length === 0 && (
+            <div className="empty-state" style={{ padding: 35 }}>
+              <FileSearch size={24} />
+              <p>No contract terms have been extracted for this document.</p>
+              <p>Use "Extract contract terms" to start building its index.</p>
+            </div>
+          )}
+
+        {!loading &&
+          selectedDocumentId &&
+          terms.length > 0 &&
+          filteredTerms.length === 0 && (
+            <div className="empty-state" style={{ padding: 30 }}>
+              No terms match the selected filters.
+            </div>
+          )}
+
+        <div style={{ display: "grid", gap: 12, padding: 18 }}>
+          {filteredTerms.map((term) => {
+            const isExpanded = expandedId === term.id;
+            const confidence =
+              typeof term.confidence === "number"
+                ? `${Math.round(term.confidence * 100)}%`
+                : "Not recorded";
+
+            const statusColor =
+              term.review_status === "approved"
+                ? "#166534"
+                : term.review_status === "rejected"
+                  ? "#B42318"
+                  : "#8A5A00";
+
+            const statusBackground =
+              term.review_status === "approved"
+                ? "#DCFCE7"
+                : term.review_status === "rejected"
+                  ? "#FEE2E2"
+                  : "#FEF3C7";
+
+            return (
+              <article
+                key={term.id}
+                style={{
+                  border: "1px solid #E2E7EF",
+                  borderRadius: 11,
+                  padding: 17,
+                  background: "#fff",
+                }}
+              >
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    gap: 12,
+                    flexWrap: "wrap",
+                  }}
+                >
+                  <div style={{ minWidth: 220, flex: 1 }}>
+                    <div
+                      style={{
+                        fontSize: 11,
+                        fontWeight: 700,
+                        color: "#77849A",
+                        textTransform: "uppercase",
+                        letterSpacing: 0.6,
+                      }}
+                    >
+                      {term.term_category}
+                    </div>
+                    <h3 style={{ fontSize: 18, margin: "5px 0 7px" }}>
+                      {term.term_name || "Unnamed contract term"}
+                    </h3>
+                    <p style={{ ...mutedStyle, margin: 0 }}>
+                      {term.clause_reference
+                        ? `Clause ${term.clause_reference}`
+                        : "Clause reference not identified"}
+                      {term.page_number
+                        ? ` · Page ${term.page_number}`
+                        : " · Page not identified"}
+                      {` · Term #${term.id}`}
+                    </p>
+                  </div>
+
+                  <div style={{ textAlign: "right" }}>
+                    <span
+                      style={{
+                        display: "inline-block",
+                        padding: "5px 9px",
+                        borderRadius: 20,
+                        color: statusColor,
+                        background: statusBackground,
+                        fontSize: 12,
+                        fontWeight: 700,
+                      }}
+                    >
+                      {term.review_status || "pending"}
+                    </span>
+                    <div style={{ ...mutedStyle, marginTop: 7 }}>
+                      Confidence: {confidence}
+                    </div>
+                  </div>
+                </div>
+
+                {term.interpretation && (
+                  <p style={{ fontSize: 14, lineHeight: 1.7 }}>
+                    {term.interpretation}
+                  </p>
+                )}
+
+                {term.financial_impact && (
+                  <div
+                    style={{
+                      padding: 12,
+                      background: "#F7F8FB",
+                      borderRadius: 8,
+                      marginTop: 10,
+                    }}
+                  >
+                    <b style={{ fontSize: 12 }}>FINANCIAL IMPACT</b>
+                    <p style={{ margin: "5px 0 0", fontSize: 14 }}>
+                      {term.financial_impact}
+                    </p>
+                  </div>
+                )}
+
+                {(term.effective_date || term.expiry_date) && (
+                  <div
+                    style={{
+                      display: "flex",
+                      gap: 22,
+                      flexWrap: "wrap",
+                      marginTop: 12,
+                      fontSize: 13,
+                    }}
+                  >
+                    <span>
+                      <b>Effective:</b> {displayDate(term.effective_date)}
+                    </span>
+                    <span>
+                      <b>Expiry:</b> {displayDate(term.expiry_date)}
+                    </span>
+                  </div>
+                )}
+
+                {term.missing_information &&
+                  term.missing_information.length > 0 && (
+                    <div
+                      style={{
+                        marginTop: 12,
+                        padding: 11,
+                        background: "#FFFBEB",
+                        borderRadius: 8,
+                        color: "#854D0E",
+                      }}
+                    >
+                      <div
+                        style={{
+                          fontWeight: 700,
+                          fontSize: 12,
+                          marginBottom: 5,
+                        }}
+                      >
+                        <AlertTriangle
+                          size={14}
+                          style={{
+                            display: "inline",
+                            verticalAlign: "middle",
+                            marginRight: 5,
+                          }}
+                        />
+                        Missing information / ambiguity
+                      </div>
+                      {term.missing_information.map((item, index) => (
+                        <div key={index} style={{ fontSize: 13 }}>
+                          • {item}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                <div style={{ marginTop: 13 }}>
+                  <button
+                    type="button"
+                    className="button button-outline"
+                    onClick={() => toggleSource(term)}
+                  >
+                    <FileSearch size={14} />
+                    {isExpanded ? "Hide source passage" : "View source passage"}
+                  </button>
+
+                  {isExpanded && (
+                    <blockquote
+                      style={{
+                        margin: "12px 0 0",
+                        padding: 13,
+                        background: "#F7F8FB",
+                        borderLeft: "3px solid #897AF1",
+                        borderRadius: 5,
+                        fontSize: 13,
+                        lineHeight: 1.7,
+                      }}
+                    >
+                      <b>Original extracted wording</b>
+                      <p>{term.original_text}</p>
+                      <b>Supporting source passage</b>
+                      <p>
+                        {sourceLoadingId === term.id
+                          ? "Loading source passage..."
+                          : sourceEvidence[term.id] || term.original_text}
+                      </p>
+                      <small>
+                        {term.clause_reference
+                          ? `Clause ${term.clause_reference}`
+                          : "Clause reference not identified"}
+                        {term.page_number
+                          ? ` · Page ${term.page_number}`
+                          : ""}
+                      </small>
+                    </blockquote>
+                  )}
+                </div>
+
+                <div
+                  style={{
+                    marginTop: 15,
+                    paddingTop: 13,
+                    borderTop: "1px solid #EDF0F5",
+                  }}
+                >
+                  <label
+                    style={{
+                      display: "block",
+                      fontSize: 12,
+                      fontWeight: 700,
+                      marginBottom: 7,
+                    }}
+                  >
+                    REVIEW NOTES
+                  </label>
+                  <textarea
+                    rows={2}
+                    value={notes[term.id] ?? term.review_notes ?? ""}
+                    onChange={(event) =>
+                      setNotes((previous) => ({
+                        ...previous,
+                        [term.id]: event.target.value,
+                      }))
+                    }
+                    placeholder="Record the reason for your review decision..."
+                    style={{
+                      width: "100%",
+                      boxSizing: "border-box",
+                      padding: 10,
+                      border: "1px solid #DCE2EC",
+                      borderRadius: 7,
+                      font: "inherit",
+                      fontSize: 13,
+                    }}
+                  />
+
+                  <div
+                    style={{
+                      display: "flex",
+                      gap: 8,
+                      flexWrap: "wrap",
+                      marginTop: 10,
+                    }}
+                  >
+                    <button
+                      type="button"
+                      className="button button-primary"
+                      disabled={savingId === term.id}
+                      onClick={() => updateReview(term, "approved")}
+                    >
+                      <CheckCircle2 size={14} />
+                      Approve term
+                    </button>
+
+                    <button
+                      type="button"
+                      className="button button-outline"
+                      disabled={savingId === term.id}
+                      onClick={() => updateReview(term, "rejected")}
+                    >
+                      <XCircle size={14} />
+                      Reject term
+                    </button>
+
+                    {term.review_status !== "pending" && (
+                      <button
+                        type="button"
+                        className="button button-outline"
+                        disabled={savingId === term.id}
+                        onClick={() => updateReview(term, "pending")}
+                      >
+                        Return to pending
+                      </button>
+                    )}
+
+                    {savingId === term.id && (
+                      <span style={mutedStyle}>Saving review...</span>
+                    )}
+                  </div>
+                </div>
+              </article>
+            );
+          })}
+        </div>
+      </section>
+
+      <div className="demo-disclaimer" style={{ marginTop: 16 }}>
+        <AlertTriangle size={14} />
+        Extracted terms are AI-generated review aids. Approval confirms a
+        human review decision; it does not constitute legal approval or
+        automatically validate a supplier invoice.
+      </div>
+    </>
+  );
+}

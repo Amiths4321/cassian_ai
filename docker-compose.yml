@@ -1,0 +1,28 @@
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg18
+    container_name: contractiq-postgres
+    restart: unless-stopped
+
+    environment:
+      POSTGRES_DB: contractiq
+      POSTGRES_USER: contractiq_user
+      POSTGRES_PASSWORD: ContractIQ_Local_2026!
+
+    ports:
+      - "5433:5432"
+
+    volumes:
+      - contractiq_existing_data:/var/lib/postgresql
+
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U contractiq_user -d contractiq"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  contractiq_existing_data:
+    external: true
+    name: d597cde30aaeb268688bc01fb2c0a8ddacfa37273b55ee8e46f3edf56def2344

@@ -1,0 +1,270 @@
+ "use client";
+
+import { useEffect, useMemo, useState } from "react";
+
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
+
+type DocumentItem = {
+  document_id: string;
+  filename: string;
+  pages_indexed?: number;
+  chunks_created?: number;
+};
+
+type ClauseItem = {
+  id: number;
+  clause_reference?: string | null;
+  heading?: string | null;
+  original_text?: string | null;
+  page_start?: number | null;
+  page_end?: number | null;
+  extraction_status?: string | null;
+  confidence?: number | null;
+  review_status?: string | null;
+};
+
+type RuleItem = {
+  id: number;
+  clause_id?: number | null;
+  rule_type?: string | null;
+  category?: string | null;
+  title?: string | null;
+  actor?: string | null;
+  beneficiary?: string | null;
+  modality?: string | null;
+  action?: string | null;
+  trigger_condition?: string | null;
+  deadline_or_duration?: string | null;
+  amount_or_formula?: string | null;
+  exceptions_or_qualifications?: string | null;
+  consequence_or_remedy?: string | null;
+  cross_references?: string[] | null;
+  original_text?: string | null;
+  plain_language_explanation?: string | null;
+  contractual_interpretation?: string | null;
+  uncertainty_or_ambiguity?: string | null;
+  page_number?: number | null;
+  confidence?: number | null;
+  review_status?: string | null;
+};
+
+type Props = {
+  documents: DocumentItem[];
+  selectedDocumentId: string;
+  setSelectedDocumentId: (id: string) => void;
+};
+
+function records<T>(payload: any, key: string): T[] {
+  if (Array.isArray(payload?.[key])) return payload[key];
+  if (Array.isArray(payload?.value)) return payload.value;
+  if (Array.isArray(payload)) return payload;
+  return [];
+}
+
+function Field({ label, value }: { label: string; value?: string | null }) {
+  if (!value) return null;
+  return (
+    <div style={{ minWidth: 0 }}>
+      <div style={{ color: "#737d89", fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".04em", marginBottom: 4 }}>{label}</div>
+      <div style={{ color: "#30343a", fontSize: 13, lineHeight: 1.5, overflowWrap: "anywhere" }}>{value}</div>
+    </div>
+  );
+}
+
+function Status({ value }: { value?: string | null }) {
+  const label = value || "unknown";
+  return <span style={{ display: "inline-flex", borderRadius: 20, padding: "4px 9px", background: label === "reviewed" ? "#e8f1ff" : label === "resolved" ? "#e8f5ec" : "#fff4d8", color: label === "reviewed" ? "#2456a6" : label === "resolved" ? "#246b3b" : "#805b12", fontSize: 11, fontWeight: 700, textTransform: "capitalize" }}>{label}</span>;
+}
+
+export default function ClauseExplorer({ documents, selectedDocumentId, setSelectedDocumentId }: Props) {
+  const [clauses, setClauses] = useState<ClauseItem[]>([]);
+  const [rules, setRules] = useState<RuleItem[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [extracting, setExtracting] = useState(false);
+  const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+  const [search, setSearch] = useState("");
+  const [selectedClauseId, setSelectedClauseId] = useState<number | null>(null);
+  const [view, setView] = useState<"clauses" | "rules">("clauses");
+
+  const selectedDocument = documents.find(d => d.document_id === selectedDocumentId);
+
+  const loadData = async () => {
+    if (!selectedDocumentId) {
+      setClauses([]);
+      setRules([]);
+      return;
+    }
+    setLoading(true);
+    setError("");
+    setNotice("");
+    try {
+      const [clauseResponse, ruleResponse] = await Promise.all([
+        fetch(`${API_URL}/api/documents/${selectedDocumentId}/clauses`),
+        fetch(`${API_URL}/api/documents/${selectedDocumentId}/rules`)
+      ]);
+      const [clausePayload, rulePayload] = await Promise.all([
+        clauseResponse.json(), ruleResponse.json()
+      ]);
+      if (!clauseResponse.ok) throw new Error(clausePayload.detail || "Could not load clauses.");
+      if (!ruleResponse.ok) throw new Error(rulePayload.detail || "Could not load extracted rules.");
+      const nextClauses = records<ClauseItem>(clausePayload, "clauses");
+      const nextRules = records<RuleItem>(rulePayload, "rules");
+      setClauses(nextClauses);
+      setRules(nextRules);
+      setSelectedClauseId(current => current && nextClauses.some(c => c.id === current) ? current : (nextClauses[0]?.id ?? null));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not load clause intelligence.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadData();
+    // Load when the selected contract changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedDocumentId]);
+
+  const filteredClauses = useMemo(() => clauses.filter(c => {
+    const text = `${c.clause_reference || ""} ${c.heading || ""} ${c.original_text || ""}`.toLowerCase();
+    return text.includes(search.toLowerCase());
+  }), [clauses, search]);
+
+  const filteredRules = useMemo(() => rules.filter(r => {
+    const text = `${r.title || ""} ${r.category || ""} ${r.actor || ""} ${r.action || ""} ${r.original_text || ""}`.toLowerCase();
+    return text.includes(search.toLowerCase());
+  }), [rules, search]);
+
+  const selectedClause = clauses.find(c => c.id === selectedClauseId) || null;
+  const selectedRules = selectedClause ? rules.filter(r => r.clause_id === selectedClause.id) : [];
+  const pendingClauses = clauses.filter(c => (c.review_status || "pending") === "pending").length;
+  const pendingRules = rules.filter(r => (r.review_status || "pending") === "pending").length;
+
+  const runExtraction = async () => {
+    if (!selectedDocumentId) return;
+    setExtracting(true);
+    setError("");
+    setNotice("");
+    try {
+      const response = await fetch(`${API_URL}/api/documents/${selectedDocumentId}/extract-clauses`, { method: "POST" });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.detail || "Clause extraction failed.");
+      setNotice(`Extraction completed. ${payload.clauses_saved ?? "—"} clauses and ${payload.rules_saved ?? "—"} rules saved. Refreshing results…`);
+      await loadData();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Clause extraction failed.");
+    } finally {
+      setExtracting(false);
+    }
+  };
+
+  const panel: React.CSSProperties = { background: "#fff", border: "1px solid #dfe3e7", borderRadius: 12, padding: 18 };
+  const button: React.CSSProperties = { border: "1px solid #d5dbe1", background: "#fff", borderRadius: 8, padding: "9px 12px", color: "#30343a", cursor: "pointer", fontSize: 13, fontWeight: 600 };
+  const activeButton: React.CSSProperties = { ...button, background: "#626b75", borderColor: "#626b75", color: "#fff" };
+
+  return (
+    <div style={{ display: "grid", gap: 16 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 16, flexWrap: "wrap" }}>
+        <div>
+          <div style={{ color: "#77818c", fontSize: 11, fontWeight: 700, letterSpacing: 1 }}>CONTRACT INTELLIGENCE / CLAUSES</div>
+          <h1 style={{ margin: "6px 0", color: "#30343a", fontSize: 27 }}>Clause Explorer</h1>
+          <p style={{ margin: 0, color: "#68717b", fontSize: 13 }}>Explore extracted contract wording and the rules identified within it.</p>
+        </div>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <button style={button} onClick={loadData} disabled={loading || !selectedDocumentId}>Refresh</button>
+          <button style={activeButton} onClick={runExtraction} disabled={extracting || loading || !selectedDocumentId}>{extracting ? "Extracting…" : "Run clause extraction"}</button>
+        </div>
+      </div>
+
+      <section style={panel}>
+        <label htmlFor="clause-contract-select" style={{ display: "block", color: "#68717b", fontSize: 11, fontWeight: 700, marginBottom: 8 }}>SELECT CONTRACT</label>
+        <select id="clause-contract-select" value={selectedDocumentId} onChange={e => setSelectedDocumentId(e.target.value)} disabled={!documents.length} style={{ width: "100%", maxWidth: 650, padding: 11, border: "1px solid #d9dde1", borderRadius: 8, background: "#fff", color: "#30343a" }}>
+          <option value="">Select an indexed contract</option>
+          {documents.map(d => <option key={d.document_id} value={d.document_id}>{d.filename}</option>)}
+        </select>
+        {selectedDocument && <p style={{ color: "#77818c", fontSize: 12, margin: "8px 0 0" }}>{selectedDocument.pages_indexed ?? "—"} pages · {selectedDocument.chunks_created ?? "—"} indexed chunks</p>}
+      </section>
+
+      {error && <div role="alert" style={{ ...panel, color: "#a12b2b", borderColor: "#efcaca" }}>{error}</div>}
+      {notice && <div role="status" style={{ ...panel, color: "#365f42" }}>{notice}</div>}
+
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 12 }}>
+        <div style={panel}><div style={{ color: "#77818c", fontSize: 12 }}>Extracted clauses</div><div style={{ fontSize: 27, fontWeight: 700, marginTop: 5 }}>{clauses.length}</div></div>
+        <div style={panel}><div style={{ color: "#77818c", fontSize: 12 }}>Identified rules</div><div style={{ fontSize: 27, fontWeight: 700, marginTop: 5 }}>{rules.length}</div></div>
+        <div style={panel}><div style={{ color: "#77818c", fontSize: 12 }}>Pending review</div><div style={{ fontSize: 27, fontWeight: 700, marginTop: 5 }}>{pendingClauses} clauses · {pendingRules} rules</div></div>
+      </div>
+
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+        <button style={view === "clauses" ? activeButton : button} onClick={() => setView("clauses")}>Clauses ({clauses.length})</button>
+        <button style={view === "rules" ? activeButton : button} onClick={() => setView("rules")}>Rules ({rules.length})</button>
+        <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search clauses, rules, parties…" style={{ flex: "1 1 240px", maxWidth: 420, padding: 10, border: "1px solid #d9dde1", borderRadius: 8, background: "#fff", color: "#30343a" }}/>
+      </div>
+
+      {loading && <div style={panel}>Loading clause intelligence…</div>}
+      {!loading && !selectedDocumentId && <div style={panel}>Select an indexed contract to explore its clauses and rules.</div>}
+      {!loading && selectedDocumentId && clauses.length === 0 && <div style={panel}>No clauses have been extracted for this contract yet. Select “Run clause extraction” to begin.</div>}
+
+      {!loading && view === "clauses" && clauses.length > 0 && (
+        <div style={{ display: "grid", gridTemplateColumns: "minmax(260px, .85fr) minmax(0, 1.6fr)", gap: 14, alignItems: "start" }}>
+          <section style={{ ...panel, padding: 8 }}>
+            {filteredClauses.map(c => (
+              <button key={c.id} onClick={() => setSelectedClauseId(c.id)} style={{ width: "100%", display: "block", textAlign: "left", padding: 12, border: 0, borderRadius: 8, background: selectedClauseId === c.id ? "#eef0f2" : "transparent", cursor: "pointer", color: "#30343a", marginBottom: 3 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
+                  <b style={{ fontSize: 13 }}>{c.clause_reference ? `Clause ${c.clause_reference}` : "Unnumbered clause"}</b>
+                  <Status value={c.review_status}/>
+                </div>
+                <div style={{ fontSize: 13, marginTop: 5 }}>{c.heading || "Untitled clause"}</div>
+                <div style={{ color: "#77818c", fontSize: 11, marginTop: 5 }}>Page {c.page_start ?? "—"}{c.page_end && c.page_end !== c.page_start ? `–${c.page_end}` : ""} · Record #{c.id}</div>
+              </button>
+            ))}
+            {filteredClauses.length === 0 && <p style={{ padding: 12, color: "#77818c", fontSize: 13 }}>No matching clauses.</p>}
+          </section>
+
+          <section style={{ ...panel, display: "grid", gap: 16 }}>
+            {selectedClause ? <>
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+                <div><div style={{ color: "#77818c", fontSize: 11, fontWeight: 700 }}>CLAUSE {selectedClause.clause_reference || "—"} · RECORD #{selectedClause.id}</div><h2 style={{ margin: "5px 0", fontSize: 20 }}>{selectedClause.heading || "Untitled clause"}</h2></div>
+                <Status value={selectedClause.review_status}/>
+              </div>
+              <div><div style={{ color: "#68717b", fontSize: 11, fontWeight: 700, marginBottom: 7 }}>ORIGINAL CONTRACT WORDING</div><div style={{ whiteSpace: "pre-wrap", lineHeight: 1.7, fontSize: 14, color: "#30343a", background: "#f7f8f9", padding: 14, borderRadius: 8 }}>{selectedClause.original_text || "No extracted text available."}</div></div>
+              <div style={{ display: "flex", gap: 18, flexWrap: "wrap", color: "#68717b", fontSize: 12 }}><span>Page: {selectedClause.page_start ?? "—"}{selectedClause.page_end && selectedClause.page_end !== selectedClause.page_start ? `–${selectedClause.page_end}` : ""}</span><span>Extraction: {selectedClause.extraction_status || "—"}</span><span>Model confidence: {selectedClause.confidence ?? "—"}</span></div>
+              <div style={{ borderTop: "1px solid #e7eaed", paddingTop: 14 }}>
+                <h3 style={{ margin: "0 0 10px", fontSize: 15 }}>Rules identified in this clause ({selectedRules.length})</h3>
+                {selectedRules.length === 0 ? <p style={{ color: "#77818c", fontSize: 13 }}>No rules are linked to this clause record.</p> : <div style={{ display: "grid", gap: 10 }}>
+                  {selectedRules.map(r => <article key={r.id} style={{ border: "1px solid #e2e6e9", borderRadius: 9, padding: 12 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}><b style={{ fontSize: 14 }}>{r.title || "Untitled rule"}</b><Status value={r.review_status}/></div>
+                    <div style={{ color: "#77818c", fontSize: 11, margin: "5px 0 10px" }}>{r.rule_type || "Rule"} · {r.category || "Uncategorised"} · Page {r.page_number ?? "—"}</div>
+                    <p style={{ margin: "0 0 10px", color: "#30343a", fontSize: 13, lineHeight: 1.55 }}>{r.plain_language_explanation || "No plain-language explanation available."}</p>
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 10 }}>
+                      <Field label="Responsible party" value={r.actor}/><Field label="Beneficiary" value={r.beneficiary}/>
+                      <Field label="Modality" value={r.modality}/><Field label="Deadline / duration" value={r.deadline_or_duration}/>
+                      <Field label="Trigger" value={r.trigger_condition}/><Field label="Amount / formula" value={r.amount_or_formula}/>
+                      <Field label="Exceptions / qualifications" value={r.exceptions_or_qualifications}/><Field label="Consequence / remedy" value={r.consequence_or_remedy}/>
+                    </div>
+                    {r.original_text && <div style={{ marginTop: 12, padding: 10, borderLeft: "3px solid #9aa2aa", background: "#f7f8f9", fontSize: 12, lineHeight: 1.55 }}><b>Source wording</b><div style={{ marginTop: 4 }}>{r.original_text}</div></div>}
+                    {r.uncertainty_or_ambiguity && <div style={{ marginTop: 8, color: "#805b12", fontSize: 12 }}>Uncertainty: {r.uncertainty_or_ambiguity}</div>}
+                  </article>)}
+                </div>}
+              </div>
+            </> : <p style={{ color: "#77818c" }}>Select a clause to inspect its wording and linked rules.</p>}
+          </section>
+        </div>
+      )}
+
+      {!loading && view === "rules" && (
+        <section style={{ display: "grid", gap: 10 }}>
+          {filteredRules.map(r => <article key={r.id} style={panel}>
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}><div><div style={{ color: "#77818c", fontSize: 11 }}>{r.category || "Uncategorised"} · {r.rule_type || "Rule"} · Page {r.page_number ?? "—"}</div><h3 style={{ fontSize: 16, margin: "5px 0" }}>{r.title || "Untitled rule"}</h3></div><Status value={r.review_status}/></div>
+            <p style={{ color: "#30343a", fontSize: 13, lineHeight: 1.6 }}>{r.plain_language_explanation || r.action || "No explanation available."}</p>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 12 }}><Field label="Actor" value={r.actor}/><Field label="Deadline" value={r.deadline_or_duration}/><Field label="Amount / formula" value={r.amount_or_formula}/></div>
+            {r.original_text && <details style={{ marginTop: 12 }}><summary style={{ cursor: "pointer", fontSize: 12, fontWeight: 700 }}>Show original wording</summary><p style={{ fontSize: 12, lineHeight: 1.6, whiteSpace: "pre-wrap" }}>{r.original_text}</p></details>}
+          </article>)}
+          {filteredRules.length === 0 && <div style={panel}>No matching rules found.</div>}
+        </section>
+      )}
+
+      <div style={{ color: "#77818c", fontSize: 11, lineHeight: 1.5 }}>AI-extracted information is a review aid, not a verified legal conclusion. Original contract wording should be checked against the source PDF. Duplicate or incomplete extraction records may be present.</div>
+    </div>
+  );
+}

@@ -1,0 +1,47 @@
+# ContractIQ UI source bundle
+
+## Contents
+- `page.tsx` — updated dashboard and contract repository.
+- `TermsIndex.tsx` — existing contract terms interface, preserved.
+- `ClauseExplorer.tsx` — existing clause and condition interface, preserved.
+- `globals.css` — existing design system and styles, preserved.
+- `layout.tsx` — existing root layout and metadata, preserved.
+- `main.py` — supplied FastAPI backend source, included for reference; unchanged.
+
+## Changes in this bundle
+1. Dashboard portfolio metrics now treat unsuccessful risk/rule API responses as failures instead of converting them to empty arrays.
+2. Dashboard term statistics now treat failed terms requests as unavailable rather than silently counting them as zero.
+3. Dashboard term metrics display an em dash while data is unavailable.
+4. Contract repository now includes every document returned by `GET /api/documents`, rather than filtering to a hard-coded demo filename allowlist.
+5. Dashboard term statistics now aggregate across all documents returned by the backend, rather than a fixed demo filename allowlist.
+
+## Installation
+1. Back up the current active files.
+2. Extract this ZIP.
+3. Copy the files into the corresponding locations in your existing project:
+   - `page.tsx` -> `app/page.tsx`
+   - `TermsIndex.tsx` -> `app/TermsIndex.tsx`
+   - `ClauseExplorer.tsx` -> `app/ClauseExplorer.tsx`
+   - `globals.css` -> `app/globals.css`
+   - `layout.tsx` -> `app/layout.tsx`
+   - `main.py` -> `app/main.py` (reference only; no backend change is required)
+4. Keep your existing `.env`, database, `.venv`, `node_modules`, and backup files.
+
+## Validation after copying
+Run from the project root:
+```powershell
+npx tsc --noEmit
+npm run build
+npm audit --omit=dev
+python -m py_compile .\app\main.py
+python -m pip check
+```
+
+Then verify:
+- Dashboard shows all indexed contracts.
+- Risk and obligation counts show unavailable if their API calls fail.
+- Term metrics show unavailable if any selected document's terms request fails.
+- Contract repository lists newly uploaded documents, not only the former demo filenames.
+
+## Scope note
+This is a source-aligned reliability and repository-coverage update, not a claim that every item in the proposed ten-phase UI roadmap has already been implemented. The existing TermsIndex, ClauseExplorer, styling and layout are retained for the next UI refinement phases. No database migrations, reindexing, model changes, or backup-file edits are included.
