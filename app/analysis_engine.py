@@ -10,6 +10,7 @@ import re
 
 import httpx
 
+from pathlib import Path
 from dotenv import load_dotenv
 
 
@@ -22,7 +23,7 @@ OLLAMA_BASE_URL = os.getenv(
 
     "OLLAMA_BASE_URL",
 
-    "http://localhost:11434"
+    "qwen2.5vl:latest"
 
 )
 

@@ -3,3 +3,21 @@ node_modules
 out
 .env*
 .DS_Store
+
+# Python environments and caches
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Local environment and secrets
+.env
+.env.*
+!.env.example
+
+# Build and test output
+dist/
+build/

@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 import ClauseExplorer from "./ClauseExplorer";
 import TermsIndex from "./TermsIndex";
 
@@ -2132,12 +2132,15 @@ function Overview({
         <div>
           <b>
             {pendingCount === null
-              ? "Review status unavailable"
-              : `${pendingCount} items awaiting human validation`}
+              ? "Review data could not be loaded"
+              : pendingCount === 0
+                ? "No items currently awaiting review"
+                : `${pendingCount} items awaiting human validation`}
           </b>
           <p>
-            Review identified contractual obligations and potential risks before
-            taking action.
+            {pendingCount === null
+              ? "The review service did not return a result. Open the review workspace to inspect available records."
+              : "Prioritise outstanding findings and validate obligations before taking action."}
           </p>
         </div>
         <button onClick={() => setActive("Contract Risk Assessment")}>
@@ -2162,16 +2165,16 @@ function Overview({
         />
         <MetricCard
           label="Potential contract risks"
-          value={riskCount === null ? "—" : String(riskCount)}
-          note="Identified in indexed documents"
+          value={riskCount === null ? "Unavailable" : String(riskCount)}
+          note={riskCount === null ? "Risk data could not be loaded" : "Findings across indexed documents"}
           icon={ShieldAlert}
           tone="red"
           onClick={() => setActive("Contract Risk Assessment")}
         />
         <MetricCard
           label="Contractual Obligations identified"
-          value={ruleCount === null ? "—" : String(ruleCount)}
-          note="Contractual Obligations, conditions and rights"
+          value={ruleCount === null ? "Unavailable" : String(ruleCount)}
+          note={ruleCount === null ? "Obligation data could not be loaded" : "Obligations, conditions and rights"}
           icon={FileCheck2}
           tone="amber"
           onClick={() => setActive("Contractual Obligations")}
@@ -2179,32 +2182,32 @@ function Overview({
 
         <MetricCard
           label="Extracted contract terms"
-          value={termStatsUnavailable ? "—" : String(termStats.total)}
-          note="Across all loaded contracts"
+          value={termStatsUnavailable ? "Unavailable" : String(termStats.total)}
+          note={termStatsUnavailable ? "Term data could not be loaded" : "Across all loaded contracts"}
           icon={FileSearch}
           tone="blue"
           onClick={() => setActive("Contract Terms Index")}
         />
         <MetricCard
           label="Approved terms"
-          value={termStatsUnavailable ? "—" : String(termStats.approved)}
-          note="Human-reviewed and approved"
+          value={termStatsUnavailable ? "Unavailable" : String(termStats.approved)}
+          note={termStatsUnavailable ? "Term data could not be loaded" : "Human-reviewed and approved"}
           icon={FileCheck2}
           tone="violet"
           onClick={() => setActive("Contract Terms Index")}
         />
         <MetricCard
           label="Pending term reviews"
-          value={termStatsUnavailable ? "—" : String(termStats.pending)}
-          note="Awaiting human validation"
+          value={termStatsUnavailable ? "Unavailable" : String(termStats.pending)}
+          note={termStatsUnavailable ? "Term data could not be loaded" : "Awaiting human validation"}
           icon={CalendarDays}
           tone="amber"
           onClick={() => setActive("Contract Terms Index")}
         />
         <MetricCard
           label="Commercial records"
-          value={termStatsUnavailable ? "—" : String(termStats.commercial)}
-          note="Rates, payment and notice conditions"
+          value={termStatsUnavailable ? "Unavailable" : String(termStats.commercial)}
+          note={termStatsUnavailable ? "Term data could not be loaded" : "Rates, payment and notice conditions"}
           icon={Wallet}
           tone="blue"
           onClick={() => setActive("Financial & Commercial Terms")}
@@ -2218,7 +2221,7 @@ function Overview({
               <h3>Recently added contracts</h3>
               <p>Your latest contracts available for review</p>
             </div>
-            <button className="text-button">
+            <button className="text-button" onClick={() => setActive("Contracts")}>
               View all <ArrowRight size={14} />
             </button>
           </div>
@@ -2251,8 +2254,11 @@ function Overview({
                     >
                       {doc.original_filename || doc.filename}
                     </b>
-                    <small style={{ opacity: 0.7 }}>
+                    <small style={{ opacity: 0.7, display: "block", marginTop: 4 }}>
                       {doc.pages_indexed} pages · {doc.chunks_created} chunks
+                    </small>
+                    <small style={{ opacity: 0.55, display: "block", marginTop: 3, fontSize: 10 }}>
+                      Record · {doc.document_id.slice(0, 8).toUpperCase()}
                     </small>
                   </div>
                   <span className="status-pill">{doc.status || "indexed"}</span>
@@ -2284,7 +2290,7 @@ function Overview({
           </div>
           <div style={{ padding: 20 }}>
             <div style={{ fontSize: 36, fontWeight: 700 }}>
-              {pendingCount === null ? "—" : pendingCount}
+              {pendingCount === null ? "Unavailable" : pendingCount}
             </div>
             <p style={{ fontSize: 13, opacity: 0.7 }}>
               Risk observations and contractual rules awaiting human review.

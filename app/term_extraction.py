@@ -5,17 +5,18 @@ from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation
 
 import httpx
+from pathlib import Path
 from dotenv import load_dotenv
 from sqlalchemy import select
 
 from app.database import AsyncSessionLocal
 from app.db_models import Contract, DocumentChunk, ContractTerm, ContractCommercialDetail
 # Load environment variables before reading configuration.
-load_dotenv()
+load_dotenv(Path(__file__).resolve().parent.parent / ".env", override=True)
 
 OLLAMA_BASE_URL = os.getenv(
     "OLLAMA_BASE_URL",
-    "http://localhost:11434"
+    "qwen2.5vl:latest"
 ).rstrip("/")
 
 CHAT_MODEL = os.getenv(

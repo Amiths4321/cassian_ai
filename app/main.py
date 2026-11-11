@@ -14,6 +14,7 @@ from typing import Optional
 
 import fitz
 import httpx
+from pathlib import Path
 from dotenv import load_dotenv
 from fastapi import Body, FastAPI, HTTPException, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
@@ -34,9 +35,9 @@ from app.analysis_engine import analyse_contract
 
 logger = logging.getLogger(__name__)
 
-load_dotenv()
+load_dotenv(Path(__file__).resolve().parent.parent / ".env", override=True)
 
-OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434").rstrip("/")
+OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "qwen2.5vl:latest").rstrip("/")
 CHAT_MODEL = os.getenv("CHAT_MODEL", "llama3.2:latest")
 EMBED_MODEL = os.getenv("EMBED_MODEL", "nomic-embed-text:latest")
 FRONTEND_ORIGIN = os.getenv("FRONTEND_ORIGIN", "http://localhost:3000")

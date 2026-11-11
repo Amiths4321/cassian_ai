@@ -12,7 +12,7 @@ from app.db_models import Contract, DocumentChunk, ContractClause, ContractRule
 
 load_dotenv()
 
-OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434").rstrip("/")
+OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "qwen2.5vl:latest").rstrip("/")
 CHAT_MODEL = os.getenv("CHAT_MODEL", "llama3.2:latest")
 
 EXTRACTION_PROMPT = """
